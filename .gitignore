@@ -2,3 +2,5 @@ misc/
 .ipynb_checkpoints/
 __pycache__/
 TEST/
+.coverage
+coverage.xml
