@@ -16,8 +16,7 @@ The pipeline takes the most recent URMA hourly fields, preprocesses them into gr
 - `gen_maps_from_preds.ipynb` → notebook for testing + visualizing predictions
 - `config.yaml` → main configuration for paths + model settings
 
-⚠️ **Important:**  
-Update the paths inside **`config.yaml`** before running `main.py`, otherwise results will be saved inside the repo.
+⚠️ **Important:** Update the paths inside **`config.yaml`** before running `main.py`, otherwise results will be saved inside the repo.
 
 ---
 
