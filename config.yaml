@@ -8,7 +8,7 @@ graph:
     edge_weight_path: "./data/edge_weight.pt"
     nodes_csv_path: "./data/nodes_latlon.csv"
     G_base_path: "./data/G_base.pkl"
-        
+
 run_dir: "./TEST"
 make_plots: "y"
 

@@ -131,6 +131,8 @@ ignore = [
 "__init__.py" = ["E402", "F401", "F403", "F811"]
 # Ignoring undocumented public functions, public init, magic method, and magic numbers in tests folder
 "tests/*" = ["D103", "D105", "D107"]
+# Ignore E402 (module level imports not at top) in notebooks due to docstring requirements
+"*.ipynb" = ["E402"]
 
 
 [tool.ruff.lint.pep8-naming]
