@@ -1,0 +1,28 @@
+model:
+    feature_scaler_path: "./model/feature_scaler.pkl"
+    target_scaler_path: "./model/target_scaler.pkl"
+    model_path: "./model/final_model.pth"
+
+graph:
+    edge_index_path: "./data/edge_index.pt"
+    edge_weight_path: "./data/edge_weight.pt"
+    nodes_csv_path: "./data/nodes_latlon.csv"
+    G_base_path: "./data/G_base.pkl"
+        
+run_dir: "./TESTS/MAIN_TESTRUN2"
+make_plots: "y"
+
+# DO NOT CHANGE THESE -> based on trained model
+region:
+    lat_min: 42.0
+    lat_max: 45.0
+    lon_min: -81.0
+    lon_max: -78.0
+
+num_hours_to_fetch: 24
+inverse_dist: "n"
+use_celsius: "y"
+distance_threshold: 4
+pred_offsets: [1, 6, 12, 18, 24, 36, 48]
+features: ["t2m", "d2m", "u10", "v10", "sp", "orog"]
+model_arch: "GCNGRU"
