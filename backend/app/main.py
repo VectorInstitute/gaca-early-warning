@@ -261,7 +261,8 @@ async def websocket_predict(websocket: WebSocket) -> None:
         )
 
     except WebSocketDisconnect:
-        pass
+        # Client disconnected normally; no error.
+        get_logger().debug("WebSocket client disconnected")
     except Exception as e:
         await websocket.send_json({"type": "error", "message": str(e)})
     finally:
