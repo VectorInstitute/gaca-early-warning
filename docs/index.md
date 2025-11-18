@@ -7,16 +7,30 @@ The pipeline takes the most recent URMA hourly fields, preprocesses them into gr
 
 ---
 
-## Repository Structure
+## Installation
 
-- `model/` → trained GNN model (.pth) + feature/target scalers
-- `data/` → inference graph (edge_index, edge_weight, node lat/lon)
-- `util/` → preprocessing, plotting, config loader, extraction utilities
-- `main.py` → end-to-end inference runner (fetch → preprocess → predict → save)
-- `gen_maps_from_preds.ipynb` → notebook for testing + visualizing predictions
-- `config.yaml` → main configuration for paths + model settings
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management and requires **Python 3.12+**.
 
-⚠️ **Important:** Update the paths inside **`config.yaml`** before running `main.py`, otherwise results will be saved inside the repo.
+### Prerequisites
+
+If you don't have `uv` installed, install it using:
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/VectorInstitute/gaca-early-warning.git
+cd gaca-early-warning
+
+# Install all dependencies
+uv sync --dev --group docs
+
+# Activate the virtual environment
+source .venv/bin/activate
+```
 
 ---
 
