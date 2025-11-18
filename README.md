@@ -7,19 +7,6 @@ The pipeline takes the most recent URMA hourly fields, preprocesses them into gr
 
 ---
 
-## Repository Structure
-
-- `model/` → trained GNN model (.pth) + feature/target scalers
-- `data/` → inference graph (edge_index, edge_weight, node lat/lon)
-- `util/` → preprocessing, plotting, config loader, extraction utilities
-- `main.py` → end-to-end inference runner (fetch → preprocess → predict → save)
-- `gen_maps_from_preds.ipynb` → notebook for testing + visualizing predictions
-- `config.yaml` → main configuration for paths + model settings
-
-⚠️ **Important:** Update the paths inside **`config.yaml`** before running `main.py`, otherwise results will be saved inside the repo.
-
----
-
 ## Installation
 
 This project uses [uv](https://docs.astral.sh/uv/) for dependency management and requires **Python 3.12+**.
