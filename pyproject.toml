@@ -23,10 +23,12 @@ dependencies = [
     "joblib",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
+    "typer>=0.12.0",
+    "rich>=13.0.0",
 ]
 
 [project.scripts]
-gaca-ews = "gaca_ews.cli.main:main"
+gaca-ews = "gaca_ews.cli.main:app"
 
 [build-system]
 requires = ["hatchling"]
