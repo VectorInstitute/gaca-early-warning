@@ -2,19 +2,18 @@
 
 from argparse import Namespace
 
-from model import gcngru
-from util import config, data_extraction, logger, plotting, preprocessing
+from gaca_ews import core, model
 
 
 def test_import_modules() -> None:
     """Test that all main modules can be imported successfully."""
     # Verify key classes and functions are accessible
-    assert hasattr(config, "get_args")
-    assert hasattr(data_extraction, "fetch_last_hours")
-    assert hasattr(logger, "logger")
-    assert hasattr(plotting, "plot_inference_maps")
-    assert hasattr(preprocessing, "preprocess_for_inference")
-    assert hasattr(gcngru, "GCNGRU")
+    assert hasattr(core, "get_args")
+    assert hasattr(core, "fetch_last_hours")
+    assert hasattr(core, "logger")
+    assert hasattr(core, "plot_inference_maps")
+    assert hasattr(core, "preprocess_for_inference")
+    assert hasattr(model, "GCNGRU")
 
 
 def test_config_namespace() -> None:

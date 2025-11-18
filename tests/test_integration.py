@@ -2,7 +2,7 @@
 
 import pytest
 
-from util.data_extraction import fetch_last_hours
+from gaca_ews.core.data_extraction import fetch_last_hours
 
 
 @pytest.mark.integration_test

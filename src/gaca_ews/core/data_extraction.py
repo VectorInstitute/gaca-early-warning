@@ -42,7 +42,7 @@ import pandas as pd
 import pygrib
 from numpy.typing import NDArray
 
-from util.logger import logger
+from gaca_ews.core.logger import logger
 
 
 def parse_timestamp_from_key(key: str) -> datetime | None:

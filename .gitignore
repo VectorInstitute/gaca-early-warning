@@ -1,6 +1,65 @@
-misc/
-.ipynb_checkpoints/
-__pycache__/
-TEST/
-.coverage
+# Dependencies
+**node_modules
+**.next
+**__pycache__
+/.pnp
+.pnp.js
+
+# Testing
+/coverage
+
+# Next.js
+/.next/
+/out/
+
+# Production
+/build
+
+# Misc
+.DS_Store
+*.tgz
+*.tar.gz
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
+.env*.local
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Coverage reports
 coverage.xml
+htmlcov/
+.coverage
+.coverage.*
+coverage/
+coverage-*/
+**/coverage/
+**/coverage-*/
+.nyc_output
+*.lcov
+
+# mkdocs
+site/
+
+# Credentials and service keys
+**credentials.json
+**earth-engine-key.json
+ee-key.json
+*service-key.json
+*service_account*.json
+
+# Local configuration files
+.env.development
+.env.production
+
+# .ipynb_checkpoints
+.ipynb_checkpoints/

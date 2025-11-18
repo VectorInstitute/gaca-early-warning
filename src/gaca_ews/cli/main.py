@@ -277,7 +277,7 @@ def main() -> None:
             nodes_df=nodes_df,
             pred_offsets=args.pred_offsets,
             out_dir=os.path.join(plot_dir, "maps"),
-            latest_timestamp=pd.Timestamp(latest_ts),
+            latest_timestamp=latest_ts,
         )
 
         logger.info("generating timeseries plots...")
@@ -285,7 +285,7 @@ def main() -> None:
             preds_unscaled=preds_unscaled,
             pred_offsets=args.pred_offsets,
             out_dir=os.path.join(plot_dir, "timeseries"),
-            latest_timestamp=pd.Timestamp(latest_ts),
+            latest_timestamp=latest_ts,
         )
         logger.info("🖼️ plots generated!")
 

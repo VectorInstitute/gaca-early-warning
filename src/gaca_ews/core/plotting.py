@@ -34,7 +34,7 @@ import pandas as pd
 from matplotlib.colors import Normalize
 from numpy.typing import NDArray
 
-from util.logger import logger
+from gaca_ews.core.logger import logger
 
 
 def plot_inference_maps(
