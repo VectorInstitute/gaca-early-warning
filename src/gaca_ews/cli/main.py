@@ -1,297 +1,367 @@
-"""GACA NOAA GNN Inference Pipeline.
+"""GACA Early Warning System - Command Line Interface.
 
-This module implements the end-to-end inference pipeline for the GACA early warning
-system. It fetches recent meteorological data from NOAA, loads a pre-trained GNN model,
-generates predictions, and produces visualization outputs.
-
-The pipeline includes:
-- Data extraction from NOAA URMA datasets
-- Preprocessing and feature engineering
-- Model inference using GCNGRU architecture
-- Spatial map and timeseries visualization generation
-
-Examples
---------
-Run the inference pipeline with a configuration file:
-
-    $ python main.py --config config.yaml
-
-Notes
------
-The pipeline expects pre-trained model artifacts including:
-- Feature and target scalers
-- Graph edge indices and weights
-- Model checkpoint with architecture and weights
-
-The output includes prediction CSV files and optional visualization plots.
+A modern CLI for running temperature forecasts using the GCNGRU model.
 """
-###########################################################################################
-# INFERENCE PIPELINE - GACA NOAA GNN
-###########################################################################################
-# authored nov 14, 2025 by jelshawa
-# purpose: to auto-run entire pipeline from start (data fetch) to finish (preds + plots)
-###########################################################################################
 
-import os
-import time
-from contextlib import contextmanager
-from datetime import datetime, timedelta
-from typing import Any, Iterator
+from pathlib import Path
+from typing import Any
 
-import joblib
-import pandas as pd
-import torch
+import typer
 from numpy.typing import NDArray
+from rich.console import Console
+from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from rich.table import Table
+from typing_extensions import Annotated
 
-from gaca_ews.core.config import get_args
-from gaca_ews.core.data_extraction import fetch_last_hours
-from gaca_ews.core.logger import logger, setup_logging
-from gaca_ews.core.plotting import plot_inference_maps, plot_prediction_timeseries
-from gaca_ews.core.preprocessing import preprocess_for_inference
-from gaca_ews.model.gcngru import GCNGRU
-
-
-@contextmanager
-def timer(name: str = "Block") -> Iterator[None]:
-    """Timer context manager for logging execution time of code blocks."""
-    start = time.time()
-    yield
-    end = time.time()
-    logger.info(f"[⏱️ {name}] took {end - start:.2f} sec")
+from gaca_ews import __version__
+from gaca_ews.core.inference import InferenceEngine
 
 
-def load_pretrained_artifacts(
-    args: Any, device: torch.device
-) -> tuple[Any, Any, torch.Tensor, torch.Tensor, pd.DataFrame]:
-    """Load pretrained scalers, graph components, and node data.
+# Initialize Typer app and Rich console
+app = typer.Typer(
+    name="gaca-ews",
+    help="🌡️  GACA Early Warning System - Temperature Forecasting for Southwestern Ontario",
+    add_completion=False,
+    rich_markup_mode="rich",
+)
+console = Console()
 
-    Parameters
-    ----------
-    args : argparse.Namespace
-        Configuration namespace with model and graph paths.
-    device : torch.device
-        Device to load tensors onto.
+
+def _display_verbose_config(
+    engine: InferenceEngine, config: Path, output: Path
+) -> None:
+    """Display configuration table in verbose mode."""
+    info = engine.get_model_info()
+    config_table = Table(show_header=False, box=None, padding=(0, 2))
+    config_table.add_column(style="cyan")
+    config_table.add_column()
+    config_table.add_row("Config", str(config))
+    config_table.add_row("Output", str(output))
+    config_table.add_row("Device", info["device"])
+    config_table.add_row("Nodes", f"{info['num_nodes']:,}")
+    config_table.add_row("Model", info["model_architecture"])
+    console.print(config_table)
+    console.print()
+
+
+def _run_pipeline_steps(
+    engine: InferenceEngine,
+    progress: Progress,
+    output: Path,
+    save_csv: bool,
+    plots: bool,
+    verbose: bool,
+) -> tuple:
+    """Run all pipeline steps with progress tracking.
 
     Returns
     -------
     tuple
-        (feature_scaler, target_scaler, edge_index, edge_weight, nodes_df)
+        (predictions, latest_ts, csv_path)
     """
-    logger.info("📦 loading pretrained artifacts...")
-
-    feature_scaler = joblib.load(f"{args.model.feature_scaler_path}")
-    target_scaler = joblib.load(f"{args.model.target_scaler_path}")
-
-    edge_index = torch.load(args.graph.edge_index_path, map_location="cpu")
-    edge_weight = torch.load(args.graph.edge_weight_path, map_location="cpu")
-    edge_index = edge_index.to(device)
-    edge_weight = edge_weight.to(device)
-
-    nodes_df = pd.read_csv(f"{args.graph.nodes_csv_path}")
-
-    return feature_scaler, target_scaler, edge_index, edge_weight, nodes_df
-
-
-def load_model(args: Any, device: torch.device, edge_index: torch.Tensor) -> GCNGRU:
-    """Load and initialize the trained model.
-
-    Parameters
-    ----------
-    args : argparse.Namespace
-        Configuration namespace with model paths and architecture info.
-    device : torch.device
-        Device to load the model onto.
-    edge_index : torch.Tensor
-        Graph edge indices for determining number of nodes.
-
-    Returns
-    -------
-    nn.Module
-        Loaded model in evaluation mode.
-    """
-    logger.info("🧠 loading trained model weights...")
-
-    checkpoint = torch.load(args.model.model_path, map_location=device)
-
-    model_class = checkpoint["model_class"]
-    model_args = checkpoint["model_args"]
-    raw_state = checkpoint["model_state_dict"]
-
-    clean_state = {}
-    for (
-        k,
-        v,
-    ) in (
-        raw_state.items()
-    ):  # need to clean up state dict before using bc wrapped with ddp
-        if k.startswith("module."):
-            clean_state[k.replace("module.", "", 1)] = v
-        else:
-            clean_state[k] = v
-
-    # adjust args for expected model params
-    if "pred_offsets" in model_args:
-        model_args["pred_horizons"] = len(model_args["pred_offsets"])
-        del model_args["pred_offsets"]
-        del model_args["model_name"]
-
-    # get num_nodes for model also
-    model_args["num_nodes"] = edge_index.max().item() + 1
-
-    logger.info(f"🔧 using patched model_args: {model_args}")
-
-    if model_class == "DistributedDataParallel":
-        # if wrapped, use real class name stored in args
-        model_class = args.model_arch
-
-    if model_class == "GCNGRU":
-        model = GCNGRU(**model_args)
-    else:
-        raise ValueError(f"unknown model: {model_class}")
-
-    model.load_state_dict(clean_state)
-    model = model.to(device)
-    model.eval()
-
-    logger.info(f"loaded model {model_class} with args: {model_args}")
-
-    return model
-
-
-def save_predictions_to_csv(
-    preds_unscaled: NDArray[Any], nodes_df: pd.DataFrame, args: Any, latest_ts: datetime
-) -> str:
-    """Save model predictions to CSV file.
-
-    Parameters
-    ----------
-    preds_unscaled : np.ndarray
-        Unscaled predictions array.
-    nodes_df : pd.DataFrame
-        DataFrame with node coordinates.
-    args : argparse.Namespace
-        Configuration with run directory and prediction offsets.
-    latest_ts : datetime
-        Latest timestamp for calculating forecast times.
-
-    Returns
-    -------
-    str
-        Path to saved CSV file.
-    """
-    num_nodes = preds_unscaled.shape[2]
-    out_csv = os.path.join(args.run_dir, "predictions.csv")
-    rows = []
-
-    for h_idx, horizon in enumerate(args.pred_offsets):
-        forecast_time = latest_ts + timedelta(hours=horizon)
-
-        for node_idx in range(num_nodes):
-            lat = nodes_df.iloc[node_idx]["lat"]
-            lon = nodes_df.iloc[node_idx]["lon"]
-
-            pred_val = preds_unscaled[0, h_idx, node_idx, 0]
-
-            rows.append([forecast_time, horizon, lat, lon, pred_val])
-
-    out_df = pd.DataFrame(
-        rows, columns=["forecast_time", "horizon_hours", "lat", "lon", "predicted_temp"]
+    # Fetch data
+    fetch_task = progress.add_task(
+        "[cyan]Fetching NOAA meteorological data...", total=None
     )
-    out_df.to_csv(out_csv, index=False)
-    logger.info(f"saved inference results → {out_csv}")
-
-    return out_csv
-
-
-def main() -> None:
-    """Execute the complete inference pipeline from data fetch to prediction output."""
-    # setup args + logger + device
-    args = get_args()
-    setup_logging(args.run_dir)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    logger.info("🔥 starting inference pipeline!")
-    logger.info(f"📂 run dir: {args.run_dir}")
-
-    # load scalers + graph using config paths
-    feature_scaler, target_scaler, edge_index, edge_weight, nodes_df = (
-        load_pretrained_artifacts(args, device)
-    )
-
-    # load model
-    model = load_model(args, device, edge_index)
-
-    # load noaa data via api
-    with timer("Load NOAA data"):
-        df, latest_ts = fetch_last_hours(args)
-
-    logger.info(
-        "\n====================== ✅ extraction successful ======================"
-    )
-
-    logger.info(f"🧪 loaded df with shape: {df.shape}")
-    logger.info(f"total rows extracted: {len(df)}")
-    # logger.info(f"\nunique timestamps: {df['datetime'].unique()}")
-    logger.info(f"latest timestamp: {latest_ts}")
-
-    unique_locs = df[["lat", "lon"]].drop_duplicates()
-    logger.info(f"num unique locations: {len(unique_locs)}")
-
-    # logger.info("\ndf head:\n")
-    # logger.info(df.head())
-    logger.info(f"timestamps: {df['datetime'].min()} → {df['datetime'].max()}")
-
-    # preprocess noaa data before predicting
-    with timer("Preprocessing"):
-        (X_seq, timestamps, in_channels, num_nodes) = preprocess_for_inference(
-            data=df, feature_scaler=feature_scaler, args=args
+    data, latest_ts = engine.fetch_data()
+    progress.update(fetch_task, completed=True)
+    if verbose:
+        console.print(
+            f"  [dim]Fetched {len(data):,} rows • "
+            f"Latest: {latest_ts.strftime('%Y-%m-%d %H:%M UTC')}[/dim]"
         )
 
-    logger.info(f"📐 model input shape: {X_seq.shape}")
-    X_test = X_seq.to(device)
+    # Preprocess
+    preprocess_task = progress.add_task("[cyan]Preprocessing features...", total=None)
+    X = engine.preprocess(data)
+    progress.update(preprocess_task, completed=True)
+    if verbose:
+        console.print(f"  [dim]Input shape: {X.shape}[/dim]")
 
-    # run model pred
-    with timer("Model run"), torch.no_grad():
-        preds_scaled = model(X_test, edge_index, edge_weight)
+    # Run inference
+    inference_task = progress.add_task("[cyan]Running model inference...", total=None)
+    predictions = engine.predict(X)
+    progress.update(inference_task, completed=True)
+    if verbose:
+        console.print(f"  [dim]Output shape: {predictions.shape}[/dim]")
 
-    preds_np = preds_scaled.cpu().numpy()
-
-    preds_unscaled = target_scaler.inverse_transform(
-        preds_np.reshape(-1, preds_np.shape[-1])
-    ).reshape(preds_np.shape)
-
-    logger.info(f"preds shape: {preds_unscaled.shape}")
-    logger.info(f"sample preds: {preds_unscaled[0, :10, 0]}")
-
-    # save preds just in case we need them for the dashboard later
-    save_predictions_to_csv(preds_unscaled, nodes_df, args, latest_ts)
-
-    # plot results
-    if args.make_plots.lower() in ["y", "yes", "1"]:
-        plot_dir = os.path.join(args.run_dir, "plots")
-        os.makedirs(plot_dir, exist_ok=True)
-
-        logger.info("generating gnn-style inference maps...")
-        plot_inference_maps(
-            preds_unscaled=preds_unscaled,
-            nodes_df=nodes_df,
-            pred_offsets=args.pred_offsets,
-            out_dir=os.path.join(plot_dir, "maps"),
-            latest_timestamp=latest_ts,
+    # Save predictions
+    csv_path = None
+    if save_csv:
+        save_task = progress.add_task("[cyan]Saving predictions to CSV...", total=None)
+        csv_path = engine.save_predictions(
+            predictions, latest_ts, output / "predictions.csv"
         )
+        progress.update(save_task, completed=True)
+        if verbose:
+            console.print(f"  [dim]Saved: {csv_path}[/dim]")
 
-        logger.info("generating timeseries plots...")
-        plot_prediction_timeseries(
-            preds_unscaled=preds_unscaled,
-            pred_offsets=args.pred_offsets,
-            out_dir=os.path.join(plot_dir, "timeseries"),
-            latest_timestamp=latest_ts,
+    # Generate plots
+    if plots:
+        plot_task = progress.add_task(
+            "[cyan]Generating visualization plots...", total=None
         )
-        logger.info("🖼️ plots generated!")
+        engine.generate_plots(predictions, latest_ts, output / "plots")
+        progress.update(plot_task, completed=True)
+        if verbose:
+            console.print(f"  [dim]Plots saved to: {output / 'plots'}[/dim]")
 
-    logger.info("🎉 inference completed successfully!")
+    return predictions, latest_ts, csv_path
 
 
-# start
+def _display_completion_summary(
+    predictions: NDArray[Any], engine: InferenceEngine, output: Path
+) -> None:
+    """Display completion summary panel."""
+    temps = predictions.flatten()
+    num_predictions = predictions.size
+    num_nodes = predictions.shape[2]
+    horizons = engine.config["pred_offsets"]
+
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[bold green]✓ Prediction Complete![/bold green]\n\n"
+            f"📊 Generated [bold]{num_predictions:,}[/bold] predictions\n"
+            f"📍 Covering [bold]{num_nodes:,}[/bold] locations\n"
+            f"🕐 For [bold]{len(horizons)}[/bold] time horizons: {horizons}\n"
+            f"🌡️  Temperature range: [bold]{temps.min():.1f}°C[/bold] to [bold]{temps.max():.1f}°C[/bold]\n"
+            f"📂 Output: [cyan]{output}[/cyan]",
+            border_style="green",
+        )
+    )
+    console.print()
+
+
+@app.command(name="predict")
+def predict(
+    config: Annotated[
+        Path,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to configuration YAML file",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = Path("config.yaml"),
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Output directory for predictions and plots",
+        ),
+    ] = None,
+    plots: Annotated[
+        bool,
+        typer.Option(
+            "--plots/--no-plots",
+            help="Generate visualization plots",
+        ),
+    ] = True,
+    save_csv: Annotated[
+        bool,
+        typer.Option(
+            "--csv/--no-csv",
+            help="Save predictions to CSV file",
+        ),
+    ] = True,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            "-v",
+            help="Show detailed logging output",
+        ),
+    ] = False,
+) -> None:
+    """Run temperature prediction inference pipeline.
+
+    Fetches meteorological data from NOAA, preprocesses features,
+    runs the GCNGRU model, and generates multi-horizon predictions.
+
+    Example:
+        gaca-ews predict --config config.yaml --output results/
+        gaca-ews predict -c config.yaml --no-plots
+    """
+    try:
+        console.print()
+        console.print(
+            Panel.fit(
+                "[bold cyan]🌡️  GACA Early Warning System[/bold cyan]\n"
+                "[dim]Temperature Forecasting Pipeline[/dim]",
+                border_style="cyan",
+            )
+        )
+        console.print()
+
+        # Initialize inference engine
+        engine = InferenceEngine(config)
+
+        # Set output directory
+        if output is None:
+            output = Path(engine.config.get("run_dir", "./predictions"))
+        output = Path(output)
+        output.mkdir(parents=True, exist_ok=True)
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            # Load artifacts
+            load_task = progress.add_task(
+                "[cyan]Loading model artifacts...", total=None
+            )
+            engine.load_artifacts()
+            progress.update(load_task, completed=True)
+
+            # Show config if verbose
+            if verbose:
+                _display_verbose_config(engine, config, output)
+
+            # Run pipeline steps
+            predictions, latest_ts, _ = _run_pipeline_steps(
+                engine, progress, output, save_csv, plots, verbose
+            )
+
+        # Show summary
+        _display_completion_summary(predictions, engine, output)
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]⚠ Operation cancelled by user[/yellow]")
+        raise typer.Exit(1) from None
+    except Exception as e:
+        console.print(f"\n[bold red]✗ Error:[/bold red] {e}")
+        if verbose:
+            console.print_exception()
+        raise typer.Exit(1) from e
+
+
+@app.command(name="info")
+def info(
+    config: Annotated[
+        Path,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to configuration YAML file",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = Path("config.yaml"),
+) -> None:
+    """Display model configuration and system information.
+
+    Shows details about the loaded model, region coverage,
+    forecast horizons, and available features.
+
+    Example:
+        gaca-ews info
+        gaca-ews info --config custom-config.yaml
+    """
+    try:
+        console.print()
+        console.print(
+            Panel.fit(
+                "[bold cyan]GACA-EWS model information[/bold cyan]",
+                border_style="cyan",
+            )
+        )
+        console.print()
+
+        # Load engine and get info
+        engine = InferenceEngine(config)
+        info_data = engine.get_model_info()
+
+        # Display configuration
+        table = Table(title="Model Configuration", show_header=False, box=None)
+        table.add_column(style="cyan", width=20)
+        table.add_column()
+
+        table.add_row("Architecture", info_data["model_architecture"])
+        table.add_row("Device", info_data["device"])
+        table.add_row("Number of Nodes", f"{info_data['num_nodes']:,}")
+        table.add_row("Input Features", ", ".join(info_data["input_features"]))
+        table.add_row("Forecast Horizons", str(info_data["prediction_horizons"]))
+
+        console.print(table)
+        console.print()
+
+        # Display region
+        region_table = Table(title="Coverage Region", show_header=False, box=None)
+        region_table.add_column(style="cyan", width=20)
+        region_table.add_column()
+
+        region = info_data["region"]
+        region_table.add_row(
+            "Latitude", f"{region['lat_min']}° to {region['lat_max']}°"
+        )
+        region_table.add_row(
+            "Longitude", f"{region['lon_min']}° to {region['lon_max']}°"
+        )
+        region_table.add_row("Region", "Southwestern Ontario")
+
+        console.print(region_table)
+        console.print()
+
+    except Exception as e:
+        console.print(f"\n[bold red]✗ Error:[/bold red] {e}")
+        raise typer.Exit(1) from e
+
+
+@app.command(name="version")
+def version() -> None:
+    """Show version information."""
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[bold cyan]GACA Early Warning System[/bold cyan]\n"
+            f"Version: [bold]{__version__}[/bold]\n"
+            f"Model: GCNGRU (Graph Convolutional GRU)",
+            border_style="cyan",
+        )
+    )
+    console.print()
+
+
+@app.callback(invoke_without_command=True)
+def main(
+    ctx: typer.Context,
+    version_flag: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            "-V",
+            help="Show version and exit",
+        ),
+    ] = False,
+) -> None:
+    """GACA Early Warning System - Temperature Forecasting CLI.
+
+    A GNN-based forecasting system for Southwestern Ontario using NOAA data.
+    """
+    if version_flag:
+        version()
+        raise typer.Exit
+
+    if ctx.invoked_subcommand is None:
+        console.print(ctx.get_help())
+
+
 if __name__ == "__main__":
-    main()
+    app()

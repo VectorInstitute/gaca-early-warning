@@ -1,7 +1,7 @@
 model:
-    feature_scaler_path: "./model/feature_scaler.pkl"
-    target_scaler_path: "./model/target_scaler.pkl"
-    model_path: "./model/final_model.pth"
+    feature_scaler_path: "./src/gaca_ews/model/feature_scaler.pkl"
+    target_scaler_path: "./src/gaca_ews/model/target_scaler.pkl"
+    model_path: "./src/gaca_ews/model/final_model.pth"
 
 graph:
     edge_index_path: "./data/edge_index.pt"
