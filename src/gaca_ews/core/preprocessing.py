@@ -46,7 +46,7 @@ import torch
 from geopy.distance import geodesic
 from numpy.typing import NDArray
 
-from util.logger import logger
+from gaca_ews.core.logger import logger
 
 
 def summarize_feature_nans(
@@ -180,7 +180,7 @@ def build_graph_from_nodes(
     coords = nodes_df[["lat", "lon"]].to_numpy()
     num_nodes = len(coords)
 
-    graph = nx.Graph()
+    graph: nx.Graph = nx.Graph()
 
     # add nodes with pos attribute
     for i in range(num_nodes):
@@ -228,12 +228,15 @@ def build_feature_sequences(
     pos_encodings = constant_data[["lat", "lon"]].to_numpy(np.float32) * 0.01
 
     # build per-timestamp feature sequence
-    timestamp_dfs = {
+    timestamp_dfs: dict[Any, pd.DataFrame] = {
         ts: grp.sort_values(["lat", "lon"]).reset_index(drop=True)
         for ts, grp in data.groupby("datetime")
     }
 
-    timestamps_sorted = sorted(timestamp_dfs.keys())
+    timestamps_sorted: list[datetime] = [
+        ts if isinstance(ts, datetime) else ts.to_pydatetime()
+        for ts in sorted(timestamp_dfs.keys())
+    ]
     features_seq = []
 
     for ts in timestamps_sorted:
@@ -243,7 +246,7 @@ def build_feature_sequences(
         if not np.allclose(
             hourly_df[["lat", "lon"]].values, constant_data[["lat", "lon"]].values
         ):
-            raise ValueError(f"[{ts}] lat/lon mismatch!")
+            raise ValueError(f"[{ts!r}] lat/lon mismatch!")
 
         # extract features
         raw_feats = hourly_df[feats].to_numpy(np.float32)

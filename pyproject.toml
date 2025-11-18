@@ -1,5 +1,5 @@
 [project]
-name = "gaca-early-warning"
+name = "gaca-ews"
 version = "0.1.0"
 description = "GACA Early Warning System"
 readme = "README.md"
@@ -17,18 +17,23 @@ dependencies = [
     "matplotlib",
     "networkx",
     "geopy",
-    "scikit-learn",
+    "scikit-learn==1.7.1",
     "torch",
     "torch-geometric",
     "joblib",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
 ]
+
+[project.scripts]
+gaca-ews = "gaca_ews.cli.main:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["README.md"]
+packages = ["src/gaca_ews"]
 
 [dependency-groups]
 dev = [
@@ -154,5 +159,5 @@ markers = [
 
 [tool.coverage]
     [tool.coverage.run]
-    source=["util", "model"]
-    omit=["tests/*", "*__init__.py"]
+    source=["src/gaca_ews"]
+    omit=["tests/*", "*__init__.py", "src/gaca_ews/cli/*"]
