@@ -24,9 +24,13 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy application source
 COPY . .
 
-# Set environment variable for Next.js
-# This will be overridden at runtime with actual backend URL
-ENV NEXT_PUBLIC_API_URL=http://localhost:8080
+# Accept build arguments for Next.js public environment variables
+ARG NEXT_PUBLIC_API_URL=http://localhost:8080
+ARG NEXT_PUBLIC_MAPBOX_TOKEN
+
+# Set environment variables for build time
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_MAPBOX_TOKEN=$NEXT_PUBLIC_MAPBOX_TOKEN
 
 # Build the Next.js application
 RUN npm run build

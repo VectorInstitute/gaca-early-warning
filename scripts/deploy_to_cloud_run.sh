@@ -201,7 +201,17 @@ if [[ "${DEPLOY_BACKEND}" == "true" ]]; then
     BACKEND_DEPLOY_CMD+=(--no-allow-unauthenticated)
   fi
 
-  run_cmd "${BACKEND_DEPLOY_CMD[@]}"
+  # Run deployment with error handling (gcloud may return error even on eventual success)
+  if [[ "${DRY_RUN}" == "false" ]]; then
+    if "${BACKEND_DEPLOY_CMD[@]}" 2>&1; then
+      echo -e "${GREEN}✓${NC} Backend deployment command completed"
+    else
+      echo -e "${YELLOW}⚠${NC} Backend deployment command returned an error, verifying service status..."
+      sleep 10  # Wait for service to stabilize
+    fi
+  else
+    run_cmd "${BACKEND_DEPLOY_CMD[@]}"
+  fi
 
   # Clean up temporary Dockerfile
   if [[ "${DRY_RUN}" == "false" ]]; then
@@ -210,17 +220,39 @@ if [[ "${DEPLOY_BACKEND}" == "true" ]]; then
   fi
   echo ""
 
-  # Get backend URL
+  # Get backend URL and verify deployment
   if [[ "${DRY_RUN}" == "false" ]]; then
     echo -e "${CYAN}Retrieving backend service URL...${NC}"
     BACKEND_URL=$(gcloud run services describe "${BACKEND_SERVICE_NAME}" \
       --platform=managed \
       --region="${REGION}" \
       --project="${PROJECT_ID}" \
-      --format='value(status.url)')
+      --format='value(status.url)' 2>/dev/null || echo "")
 
-    echo -e "${GREEN}✓${NC} Backend deployed successfully!"
-    echo -e "${GREEN}Backend URL:${NC} ${BACKEND_URL}"
+    if [[ -z "${BACKEND_URL}" ]]; then
+      echo -e "${RED}✗ Backend deployment failed - service not found${NC}"
+      exit 1
+    fi
+
+    # Verify service is ready
+    echo -e "${CYAN}Verifying backend service health...${NC}"
+    MAX_RETRIES=30
+    RETRY_COUNT=0
+    while [[ ${RETRY_COUNT} -lt ${MAX_RETRIES} ]]; do
+      if curl -sf "${BACKEND_URL}/health" > /dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC} Backend deployed successfully and is healthy!"
+        echo -e "${GREEN}Backend URL:${NC} ${BACKEND_URL}"
+        break
+      fi
+      RETRY_COUNT=$((RETRY_COUNT + 1))
+      if [[ ${RETRY_COUNT} -eq ${MAX_RETRIES} ]]; then
+        echo -e "${YELLOW}⚠${NC} Backend deployed but health check timed out"
+        echo -e "${GREEN}Backend URL:${NC} ${BACKEND_URL}"
+      else
+        echo -e "${CYAN}Waiting for backend to be ready... (${RETRY_COUNT}/${MAX_RETRIES})${NC}"
+        sleep 10
+      fi
+    done
     echo ""
   else
     BACKEND_URL="https://${BACKEND_SERVICE_NAME}-XXXXXX.${REGION}.run.app"
@@ -254,13 +286,50 @@ if [[ "${DEPLOY_APP}" == "true" ]]; then
   echo -e "${BLUE}Step 4: Deploy Dashboard App${NC}"
   echo -e "${GREEN}▶${NC} Building and deploying dashboard container..."
 
+  # Read Mapbox token from .env.local if available
+  MAPBOX_TOKEN=""
+  if [[ -f "${APP_DIR}/.env.local" ]]; then
+    MAPBOX_TOKEN=$(grep "^NEXT_PUBLIC_MAPBOX_TOKEN=" "${APP_DIR}/.env.local" | cut -d '=' -f2)
+  fi
+
+  if [[ -z "${MAPBOX_TOKEN}" ]]; then
+    echo -e "${YELLOW}⚠${NC} Mapbox token not found - map features may not work"
+  else
+    echo -e "${GREEN}✓${NC} Mapbox token found in .env.local"
+  fi
+
+  # Build and deploy with build-time arguments for Next.js
+  echo -e "${CYAN}Building frontend with NEXT_PUBLIC_ environment variables...${NC}"
+
+  IMAGE_NAME="gcr.io/${PROJECT_ID}/${APP_SERVICE_NAME}"
+
+  if [[ "${DRY_RUN}" == "false" ]]; then
+    # Build the Docker image using Cloud Build with build args
+    echo -e "${GREEN}▶${NC} gcloud builds submit --config=cloudbuild.yaml"
+
+    if [[ -n "${MAPBOX_TOKEN}" ]]; then
+      gcloud builds submit "${APP_DIR}" \
+        --config="${APP_DIR}/cloudbuild.yaml" \
+        --substitutions="_IMAGE_NAME=${IMAGE_NAME},_NEXT_PUBLIC_API_URL=${BACKEND_URL},_NEXT_PUBLIC_MAPBOX_TOKEN=${MAPBOX_TOKEN}" \
+        --project="${PROJECT_ID}" \
+        --region="${REGION}"
+    else
+      gcloud builds submit "${APP_DIR}" \
+        --config="${APP_DIR}/cloudbuild.yaml" \
+        --substitutions="_IMAGE_NAME=${IMAGE_NAME},_NEXT_PUBLIC_API_URL=${BACKEND_URL}" \
+        --project="${PROJECT_ID}" \
+        --region="${REGION}"
+    fi
+
+    echo -e "${GREEN}✓${NC} Frontend image built successfully"
+  fi
+
   APP_DEPLOY_CMD=(
     gcloud run deploy "${APP_SERVICE_NAME}"
-    --source="${APP_DIR}"
+    --image="${IMAGE_NAME}"
     --platform=managed
     --region="${REGION}"
     --project="${PROJECT_ID}"
-    --set-env-vars="NEXT_PUBLIC_API_URL=${BACKEND_URL}"
     --memory=1Gi
     --cpu=1
     --timeout=60s
@@ -277,20 +346,52 @@ if [[ "${DEPLOY_APP}" == "true" ]]; then
     APP_DEPLOY_CMD+=(--no-allow-unauthenticated)
   fi
 
-  run_cmd "${APP_DEPLOY_CMD[@]}"
+  # Run deployment with error handling
+  if [[ "${DRY_RUN}" == "false" ]]; then
+    if "${APP_DEPLOY_CMD[@]}" 2>&1; then
+      echo -e "${GREEN}✓${NC} Dashboard deployment command completed"
+    else
+      echo -e "${YELLOW}⚠${NC} Dashboard deployment command returned an error, verifying service status..."
+      sleep 10  # Wait for service to stabilize
+    fi
+  else
+    run_cmd "${APP_DEPLOY_CMD[@]}"
+  fi
   echo ""
 
-  # Get app URL
+  # Get app URL and verify deployment
   if [[ "${DRY_RUN}" == "false" ]]; then
     echo -e "${CYAN}Retrieving dashboard service URL...${NC}"
     APP_URL=$(gcloud run services describe "${APP_SERVICE_NAME}" \
       --platform=managed \
       --region="${REGION}" \
       --project="${PROJECT_ID}" \
-      --format='value(status.url)')
+      --format='value(status.url)' 2>/dev/null || echo "")
 
-    echo -e "${GREEN}✓${NC} Dashboard deployed successfully!"
-    echo -e "${GREEN}Dashboard URL:${NC} ${APP_URL}"
+    if [[ -z "${APP_URL}" ]]; then
+      echo -e "${RED}✗ Dashboard deployment failed - service not found${NC}"
+      exit 1
+    fi
+
+    # Verify service is ready
+    echo -e "${CYAN}Verifying dashboard service health...${NC}"
+    MAX_RETRIES=30
+    RETRY_COUNT=0
+    while [[ ${RETRY_COUNT} -lt ${MAX_RETRIES} ]]; do
+      if curl -sf "${APP_URL}/api/health" > /dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC} Dashboard deployed successfully and is healthy!"
+        echo -e "${GREEN}Dashboard URL:${NC} ${APP_URL}"
+        break
+      fi
+      RETRY_COUNT=$((RETRY_COUNT + 1))
+      if [[ ${RETRY_COUNT} -eq ${MAX_RETRIES} ]]; then
+        echo -e "${YELLOW}⚠${NC} Dashboard deployed but health check timed out"
+        echo -e "${GREEN}Dashboard URL:${NC} ${APP_URL}"
+      else
+        echo -e "${CYAN}Waiting for dashboard to be ready... (${RETRY_COUNT}/${MAX_RETRIES})${NC}"
+        sleep 10
+      fi
+    done
     echo ""
 
     # Update backend CORS settings
