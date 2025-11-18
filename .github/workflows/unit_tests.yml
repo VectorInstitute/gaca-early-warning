@@ -61,10 +61,10 @@ jobs:
           uv run pytest -m "not integration_test" --cov . --cov-report=xml tests
 
       # Uncomment this once this repo is configured on Codecov
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: VectorInstitute/gaca-early-warning
-          fail_ci_if_error: true
-          verbose: true
+      # - name: Upload coverage to Codecov
+      #   uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7
+      #   with:
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     slug: VectorInstitute/gaca-early-warning
+      #     fail_ci_if_error: true
+      #     verbose: true
