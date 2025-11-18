@@ -5,6 +5,7 @@ forecasting model, including endpoints for running inference and retrieving
 predictions.
 """
 
+import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from gaca_ews.core.inference import InferenceEngine
+from gaca_ews.core.logger import get_logger
 
 
 app = FastAPI(
@@ -63,6 +65,10 @@ class ModelInfo(BaseModel):
 @app.on_event("startup")
 async def startup_event() -> None:
     """Load model on startup."""
+    # Set logger to WARNING level for API to reduce noise
+    logger = get_logger()
+    logger.setLevel(logging.WARNING)
+
     app.state.engine = InferenceEngine("config.yaml")
     app.state.engine.load_artifacts()
 
