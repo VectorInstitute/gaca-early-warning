@@ -3,6 +3,7 @@
 A modern CLI for running temperature forecasts using the GCNGRU model.
 """
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ from typing_extensions import Annotated
 
 from gaca_ews import __version__
 from gaca_ews.core.inference import InferenceEngine
+from gaca_ews.core.logger import get_logger, setup_console_logging
 
 
 # Initialize Typer app and Rich console
@@ -31,7 +33,10 @@ app = typer.Typer(
     add_completion=False,
     rich_markup_mode="rich",
 )
-console = Console()
+console = Console(stderr=True)
+
+# Configure logger to use the same console as CLI for clean output
+setup_console_logging(console=console)
 
 
 def _display_verbose_config(
@@ -71,7 +76,7 @@ def _run_pipeline_steps(
         "[cyan]Fetching NOAA meteorological data...", total=None
     )
     data, latest_ts = engine.fetch_data()
-    progress.update(fetch_task, completed=True)
+    progress.remove_task(fetch_task)
     if verbose:
         console.print(
             f"  [dim]Fetched {len(data):,} rows • "
@@ -81,14 +86,14 @@ def _run_pipeline_steps(
     # Preprocess
     preprocess_task = progress.add_task("[cyan]Preprocessing features...", total=None)
     X = engine.preprocess(data)
-    progress.update(preprocess_task, completed=True)
+    progress.remove_task(preprocess_task)
     if verbose:
         console.print(f"  [dim]Input shape: {X.shape}[/dim]")
 
     # Run inference
     inference_task = progress.add_task("[cyan]Running model inference...", total=None)
     predictions = engine.predict(X)
-    progress.update(inference_task, completed=True)
+    progress.remove_task(inference_task)
     if verbose:
         console.print(f"  [dim]Output shape: {predictions.shape}[/dim]")
 
@@ -99,7 +104,7 @@ def _run_pipeline_steps(
         csv_path = engine.save_predictions(
             predictions, latest_ts, output / "predictions.csv"
         )
-        progress.update(save_task, completed=True)
+        progress.remove_task(save_task)
         if verbose:
             console.print(f"  [dim]Saved: {csv_path}[/dim]")
 
@@ -109,7 +114,7 @@ def _run_pipeline_steps(
             "[cyan]Generating visualization plots...", total=None
         )
         engine.generate_plots(predictions, latest_ts, output / "plots")
-        progress.update(plot_task, completed=True)
+        progress.remove_task(plot_task)
         if verbose:
             console.print(f"  [dim]Plots saved to: {output / 'plots'}[/dim]")
 
@@ -195,10 +200,15 @@ def predict(
         gaca-ews predict -c config.yaml --no-plots
     """
     try:
+        # Set logger level based on verbose mode
+        log_level = logging.INFO if verbose else logging.WARNING
+        logger = get_logger()
+        logger.setLevel(log_level)
+
         console.print()
         console.print(
             Panel.fit(
-                "[bold cyan]🌡️  GACA Early Warning System[/bold cyan]\n"
+                "[bold cyan]GACA Early Warning System[/bold cyan]\n"
                 "[dim]Temperature Forecasting Pipeline[/dim]",
                 border_style="cyan",
             )
@@ -226,7 +236,7 @@ def predict(
                 "[cyan]Loading model artifacts...", total=None
             )
             engine.load_artifacts()
-            progress.update(load_task, completed=True)
+            progress.remove_task(load_task)
 
             # Show config if verbose
             if verbose:
