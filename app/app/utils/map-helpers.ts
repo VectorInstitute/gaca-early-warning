@@ -5,7 +5,7 @@ import { REGION_BOUNDS } from "../constants";
 /**
  * Generate Mapbox paint expression for temperature fill color using Viridis scale
  */
-export function getTemperatureFillColor(colorRange: ColorRange) {
+export function getTemperatureFillColor(colorRange: ColorRange): any {
   return [
     "interpolate",
     ["linear"],
@@ -32,7 +32,7 @@ export function getTemperatureFillColor(colorRange: ColorRange) {
     VIRIDIS_COLORS[9],
     colorRange.stops[10],
     VIRIDIS_COLORS[10],
-  ] as const;
+  ];
 }
 
 /**
@@ -41,6 +41,7 @@ export function getTemperatureFillColor(colorRange: ColorRange) {
 export function getRegionMaskGeometry() {
   return {
     type: "Feature" as const,
+    properties: {},
     geometry: {
       type: "Polygon" as const,
       coordinates: [

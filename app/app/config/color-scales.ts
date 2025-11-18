@@ -1,3 +1,5 @@
+import type { ColorRange } from "../types";
+
 /**
  * Viridis color scale for temperature visualization
  * Perceptually uniform sequential colormap
@@ -61,11 +63,11 @@ export const MAP_LAYER_STYLES = {
 /**
  * Default color range settings
  */
-export const DEFAULT_COLOR_RANGE = {
+export const DEFAULT_COLOR_RANGE: ColorRange = {
   min: -30,
   max: 30,
   stops: [-30, -20, -10, -5, 0, 5, 10, 15, 20, 25, 30],
-} as const;
+};
 
 /**
  * Color range calculation parameters

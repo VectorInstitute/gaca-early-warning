@@ -6,7 +6,8 @@ import Map, { Source, Layer, NavigationControl } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { MapPin, TrendingUp, ChevronDown } from "lucide-react";
 import { MAPBOX_TOKEN, REGION_BOUNDS } from "./constants";
-import type { HoverInfo, SelectedNode, MapMouseEvent } from "./types";
+import type { MapMouseEvent } from "react-map-gl/mapbox";
+import type { HoverInfo, SelectedNode } from "./types";
 import {
   useModelInfo,
   useWebSocketPredictions,

@@ -7,6 +7,7 @@ predictions.
 
 import asyncio
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -31,10 +32,27 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Add CORS middleware for Next.js frontend
+# Configure CORS for both local development and Cloud Run
+# Get allowed origins from environment variable or use defaults
+ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS", "")
+allowed_origins = [
+    "http://localhost:3000",  # Local development
+    "http://localhost:8080",  # Local backend
+]
+
+# Add origins from environment variable (for Cloud Run deployments)
+if ALLOWED_ORIGINS_ENV:
+    additional_origins = [
+        origin.strip() for origin in ALLOWED_ORIGINS_ENV.split(",") if origin.strip()
+    ]
+    allowed_origins.extend(additional_origins)
+
+# For Cloud Run, also allow origins that match the pattern
+# https://*-HASH.REGION.run.app
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=allowed_origins,
+    allow_origin_regex=r"https://.*\.run\.app",  # Allow all Cloud Run URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

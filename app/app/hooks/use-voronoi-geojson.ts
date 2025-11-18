@@ -57,7 +57,7 @@ export function useVoronoiGeoJSON(currentPredictions: Prediction[]): VoronoiGeoJ
               type: "Feature" as const,
               geometry: {
                 type: "Polygon" as const,
-                coordinates: clipped.geometry.coordinates,
+                coordinates: clipped.geometry.coordinates as number[][][],
               },
               properties: {
                 temperature: temps[i],

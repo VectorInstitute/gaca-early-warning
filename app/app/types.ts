@@ -87,4 +87,4 @@ export interface StatCardProps {
   icon: LucideIcon;
 }
 
-export type { MapMouseEvent, MapFeatureProperties } from "./types/map-events";
+export type { MapFeatureProperties } from "./types/map-events";

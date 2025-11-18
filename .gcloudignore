@@ -1,0 +1,78 @@
+# This file specifies files to ignore when deploying to Google Cloud Run
+# Similar to .gitignore, but specific to Cloud Build
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+tests/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation
+docs/
+*.md
+mkdocs.yml
+!README.md
+
+# CI/CD
+.github/
+.pre-commit-config.yaml
+
+# Notebooks
+*.ipynb
+.ipynb_checkpoints/
+gen_maps_from_preds.ipynb
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Node.js (app directory - has its own .dockerignore)
+app/node_modules/
+app/.next/
+app/out/
+app/.env
+app/.env.local
+
+# Local development
+.env
+.env.local
+*.log
+
+# Test output directory
+TEST/
+
+# Cache directories
+.ruff_cache/
+.mypy_cache/
+
+# Deployment artifacts
+.deployment-urls

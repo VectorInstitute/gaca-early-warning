@@ -1,0 +1,58 @@
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+
+# Testing
+.pytest_cache
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+.pre-commit-config.yaml
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Testing files
+test_*.py
+*_test.py
+tests/
+
+# Local config
+.env
+.env.local
+*.log
