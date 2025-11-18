@@ -71,6 +71,24 @@ repos:
       pass_filenames: false
       always_run: true
 
+  - repo: local
+    hooks:
+      - id: prettier-app
+        name: Prettier (app/)
+        entry: bash -c 'cd app && npx prettier --write "${@#app/}"' --
+        language: system
+        files: '^app/'
+        types_or: [javascript, jsx, ts, tsx, json, css]
+        pass_filenames: true
+
+      - id: nextjs-lint
+        name: Next.js Lint
+        entry: bash -c 'cd app && npm run lint'
+        language: system
+        files: '^app/'
+        types_or: [javascript, jsx, ts, tsx]
+        pass_filenames: false
+
 ci:
     autofix_commit_msg: |
         [pre-commit.ci] Add auto fixes from pre-commit.com hooks

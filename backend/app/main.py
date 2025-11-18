@@ -5,18 +5,24 @@ forecasting model, including endpoints for running inference and retrieving
 predictions.
 """
 
+import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from gaca_ews.core.inference import InferenceEngine
 from gaca_ews.core.logger import get_logger
+
+
+# Thread pool for running blocking operations
+executor = ThreadPoolExecutor(max_workers=1)
 
 
 app = FastAPI(
@@ -51,12 +57,21 @@ class PredictionResponse(BaseModel):
     predicted_temp: float
 
 
+class FeatureMetadata(BaseModel):
+    """Metadata for a single input feature."""
+
+    name: str
+    label: str
+    icon: str
+
+
 class ModelInfo(BaseModel):
     """Model information response."""
 
     model_architecture: str
     num_nodes: int
     input_features: list[str]
+    feature_metadata: list[FeatureMetadata]
     prediction_horizons: list[int]
     region: dict[str, float]
     status: str
@@ -97,37 +112,87 @@ async def get_model_info() -> ModelInfo:
 
     info = app.state.engine.get_model_info()
 
+    # Feature metadata mapping
+    feature_info = {
+        "t2m": {"label": "2m Temperature", "icon": "thermometer"},
+        "d2m": {"label": "2m Dewpoint", "icon": "droplets"},
+        "u10": {"label": "10m U-Wind", "icon": "wind"},
+        "v10": {"label": "10m V-Wind", "icon": "compass"},
+        "sp": {"label": "Surface Pressure", "icon": "gauge"},
+        "orog": {"label": "Orography", "icon": "mountain"},
+    }
+
+    feature_metadata = [
+        FeatureMetadata(
+            name=feat,
+            label=feature_info.get(feat, {}).get("label", feat),
+            icon=feature_info.get(feat, {}).get("icon", "circle"),
+        )
+        for feat in info["input_features"]
+    ]
+
     return ModelInfo(
         model_architecture=info["model_architecture"],
         num_nodes=info["num_nodes"],
         input_features=info["input_features"],
+        feature_metadata=feature_metadata,
         prediction_horizons=info["prediction_horizons"],
         region=info["region"],
         status="loaded",
     )
 
 
-@app.post("/predict", response_model=list[PredictionResponse])
-async def run_inference(request: PredictionRequest) -> list[PredictionResponse]:
-    """Run inference and return predictions."""
-    if not hasattr(app.state, "engine"):
-        raise HTTPException(status_code=503, detail="Model not loaded")
+async def run_pipeline_with_progress(
+    websocket: WebSocket | None = None,
+) -> list[PredictionResponse]:
+    """Run inference pipeline with progress updates via WebSocket."""
+    engine = app.state.engine
+
+    async def send_progress(step: str, status: str = "in_progress") -> None:
+        """Send progress update via WebSocket."""
+        if websocket:
+            await websocket.send_json(
+                {
+                    "type": "progress",
+                    "step": step,
+                    "status": status,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
 
     try:
-        # Run full pipeline
-        predictions, latest_ts = app.state.engine.run_full_pipeline()
+        # Step 1: Load artifacts (if not already loaded)
+        await send_progress("Loading model artifacts", "in_progress")
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(executor, engine.load_artifacts)
+        await send_progress("Loading model artifacts", "completed")
+
+        # Step 2: Fetch data
+        await send_progress("Fetching NOAA meteorological data", "in_progress")
+        data, latest_ts = await loop.run_in_executor(executor, engine.fetch_data)
+        await send_progress("Fetching NOAA meteorological data", "completed")
+
+        # Step 3: Preprocess
+        await send_progress("Preprocessing features", "in_progress")
+        X = await loop.run_in_executor(executor, engine.preprocess, data)
+        await send_progress("Preprocessing features", "completed")
+
+        # Step 4: Run inference
+        await send_progress("Running model inference", "in_progress")
+        predictions = await loop.run_in_executor(executor, engine.predict, X)
+        await send_progress("Running model inference", "completed")
 
         # Format response
         num_pred_nodes = predictions.shape[2]
-        pred_offsets = app.state.engine.config["pred_offsets"]
+        pred_offsets = engine.config["pred_offsets"]
 
         response = []
         for h_idx, horizon in enumerate(pred_offsets):
             forecast_time = latest_ts + timedelta(hours=horizon)
 
             for node_idx in range(num_pred_nodes):
-                lat = app.state.engine.nodes_df.iloc[node_idx]["lat"]
-                lon = app.state.engine.nodes_df.iloc[node_idx]["lon"]
+                lat = engine.nodes_df.iloc[node_idx]["lat"]
+                lon = engine.nodes_df.iloc[node_idx]["lon"]
                 pred_val = float(predictions[0, h_idx, node_idx, 0])
 
                 response.append(
@@ -141,6 +206,58 @@ async def run_inference(request: PredictionRequest) -> list[PredictionResponse]:
                 )
 
         return response
+
+    except Exception as e:
+        if websocket:
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "message": str(e),
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+        raise
+
+
+@app.websocket("/ws/predict")
+async def websocket_predict(websocket: WebSocket) -> None:
+    """WebSocket endpoint for inference with real-time progress updates."""
+    await websocket.accept()
+
+    if not hasattr(app.state, "engine"):
+        await websocket.send_json({"type": "error", "message": "Model not loaded"})
+        await websocket.close()
+        return
+
+    try:
+        # Run pipeline with progress updates
+        response = await run_pipeline_with_progress(websocket)
+
+        # Send completion with data
+        await websocket.send_json(
+            {
+                "type": "complete",
+                "data": [pred.model_dump() for pred in response],
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        await websocket.send_json({"type": "error", "message": str(e)})
+    finally:
+        await websocket.close()
+
+
+@app.post("/predict", response_model=list[PredictionResponse])
+async def run_inference(request: PredictionRequest) -> list[PredictionResponse]:
+    """Run inference and return predictions (legacy REST endpoint)."""
+    if not hasattr(app.state, "engine"):
+        raise HTTPException(status_code=503, detail="Model not loaded")
+
+    try:
+        return await run_pipeline_with_progress(None)
 
     except Exception as e:
         raise HTTPException(
