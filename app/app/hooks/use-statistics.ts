@@ -9,8 +9,8 @@ interface UseStatisticsOptions {
 
 /**
  * Custom hook to calculate statistics for predictions
- * Returns both spatial statistics (current horizon) and display statistics
- * (either temporal for selected node or spatial for current horizon)
+ * Returns spatial statistics (current horizon), global statistics (all horizons),
+ * and display statistics (either temporal for selected node or spatial for current horizon)
  */
 export function useStatistics({
   predictions,
@@ -22,6 +22,21 @@ export function useStatistics({
     () => predictions.filter((p) => p.horizon_hours === selectedHorizon),
     [predictions, selectedHorizon]
   );
+
+  // Calculate global statistics across all horizons (for consistent color scaling)
+  const globalStats = useMemo<Statistics | null>(() => {
+    if (predictions.length === 0) return null;
+
+    const temps = predictions.map((p) => p.predicted_temp);
+    const sum = temps.reduce((acc, temp) => acc + temp, 0);
+
+    return {
+      mean: sum / predictions.length,
+      min: Math.min(...temps),
+      max: Math.max(...temps),
+      count: predictions.length,
+    };
+  }, [predictions]);
 
   // Calculate spatial statistics for current horizon (for heatmap coloring)
   const spatialStats = useMemo<Statistics | null>(() => {
@@ -68,6 +83,7 @@ export function useStatistics({
   return {
     currentPredictions,
     spatialStats,
+    globalStats,
     displayStats,
   };
 }

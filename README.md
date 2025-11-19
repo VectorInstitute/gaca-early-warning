@@ -1,4 +1,14 @@
 # 🚨 GACA Early Warning System
+
+----------------------------------------------------------------------------------------
+
+[![code checks](https://github.com/VectorInstitute/gaca-early-warning/actions/workflows/code_checks.yml/badge.svg)](https://github.com/VectorInstitute/gaca-early-warning/actions/workflows/code_checks.yml)
+[![unit tests](https://github.com/VectorInstitute/gaca-early-warning/actions/workflows/unit_tests.yml/badge.svg)](https://github.com/VectorInstitute/gaca-early-warning/actions/workflows/unit_tests.yml)
+[![integration tests](https://github.com/VectorInstitute/gaca-early-warning/actions/workflows/integration_tests.yml/badge.svg)](https://github.com/VectorInstitute/gaca-early-warning/actions/workflows/integration_tests.yml)
+[![docs](https://github.com/VectorInstitute/gaca-early-warning/actions/workflows/docs.yml/badge.svg)](https://github.com/VectorInstitute/gaca-early-warning/actions/workflows/docs.yml)
+![GitHub License](https://img.shields.io/github/license/VectorInstitute/gaca-early-warning)
+
+
 ### **NOAA URMA → Graph Neural Network (GCN-GRU) Temperature Forecasting**
 
 This repository contains the **modular inference pipeline** for the **GACA Early Warning System**, a high-resolution Graph Neural Network framework that generates localized temperature forecasts from **NOAA URMA** meteorological data.
