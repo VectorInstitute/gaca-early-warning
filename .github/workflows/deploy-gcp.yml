@@ -39,6 +39,23 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Free up disk space
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+
+          # Remove unnecessary tools and files
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+          # Clean up Docker
+          docker system prune -af --volumes
+
+          echo "Disk space after cleanup:"
+          df -h
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
@@ -117,11 +134,21 @@ jobs:
 
           echo "✓ Backend tests passed"
 
-      - name: Cleanup backend test
+      - name: Cleanup backend test and free disk space
         if: always()
         run: |
+          # Stop and remove test container
           docker stop backend-test || true
           docker rm backend-test || true
+
+          # Remove backend image to free space
+          docker rmi gaca-ews:backend-${{ github.sha }} || true
+
+          # Aggressive cleanup
+          docker system prune -af --volumes
+
+          echo "Disk space after backend cleanup:"
+          df -h
 
       # Frontend Build
       - name: Build frontend image
@@ -182,11 +209,21 @@ jobs:
 
           echo "✓ Frontend tests passed"
 
-      - name: Cleanup frontend test
+      - name: Cleanup frontend test and free disk space
         if: always()
         run: |
+          # Stop and remove test container
           docker stop frontend-test || true
           docker rm frontend-test || true
+
+          # Remove frontend image to free space
+          docker rmi gaca-ews:frontend-${{ github.sha }} || true
+
+          # Final cleanup
+          docker system prune -af --volumes
+
+          echo "Disk space after all cleanups:"
+          df -h
 
   # Deploy to Cloud Run
   deploy:
@@ -207,6 +244,23 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
+      - name: Free up disk space for deployment
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+
+          # Remove unnecessary tools
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+          # Clean Docker
+          docker system prune -af --volumes
+
+          echo "Disk space after cleanup:"
+          df -h
 
       - name: Authenticate to Google Cloud
         id: auth
@@ -336,6 +390,16 @@ jobs:
             --region ${{ env.REGION }} \
             --limit 50 || true
           exit 1
+
+      # Cleanup before frontend build
+      - name: Free disk space before frontend build
+        run: |
+          # Remove backend images to free space
+          docker rmi $(docker images -q gaca-ews:backend-*) 2>/dev/null || true
+          docker system prune -af --volumes
+
+          echo "Disk space before frontend build:"
+          df -h
 
       # Build and push frontend
       - name: Build and push frontend image to GAR
