@@ -5,10 +5,13 @@ interface ForecastInfoProps {
 
 /**
  * Forecast info badge displaying prediction valid time
+ * Note: forecastTime from backend is already the valid time (base_time + horizon)
  */
 export function ForecastInfo({ forecastTime, selectedHorizon }: ForecastInfoProps) {
-  const baseTime = new Date(forecastTime);
-  const validTime = new Date(baseTime.getTime() + selectedHorizon * 60 * 60 * 1000);
+  // forecastTime is already the valid time (base time + horizon hours)
+  const validTime = new Date(forecastTime);
+  // Calculate base time by subtracting the horizon
+  const baseTime = new Date(validTime.getTime() - selectedHorizon * 60 * 60 * 1000);
 
   const formattedValidTime = validTime.toLocaleString("en-US", {
     weekday: "short",

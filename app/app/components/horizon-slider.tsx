@@ -106,8 +106,8 @@ export function HorizonSlider({
               <div className="absolute top-2.5 left-0 right-0">
                 {horizons.map((h, idx) => {
                   const percentage = (idx / (horizons.length - 1)) * 100;
-                  // Adjust for 20px thumb width to align markers with slider thumb center
-                  const thumbOffset = (0.5 - percentage / 100) * 20;
+                  // Adjust for 12px thumb width to align markers with slider thumb center
+                  const thumbOffset = (0.5 - percentage / 100) * 12;
                   return (
                     <button
                       key={h}

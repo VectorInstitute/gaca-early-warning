@@ -24,8 +24,8 @@ body {
 /* Horizon slider thumb styles */
 .slider-thumb::-webkit-slider-thumb {
   appearance: none;
-  width: 20px;
-  height: 20px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   cursor: pointer;
@@ -39,8 +39,8 @@ body {
 }
 
 .slider-thumb::-moz-range-thumb {
-  width: 20px;
-  height: 20px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   cursor: pointer;

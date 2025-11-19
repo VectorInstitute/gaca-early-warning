@@ -56,12 +56,14 @@ export default function Home() {
   });
 
   // Data processing hooks
-  const { currentPredictions, spatialStats, displayStats } = useStatistics({
-    predictions,
-    selectedHorizon,
-    selectedNode,
-  });
-  const colorRange = useColorRange(spatialStats);
+  const { currentPredictions, spatialStats, globalStats, displayStats } = useStatistics(
+    {
+      predictions,
+      selectedHorizon,
+      selectedNode,
+    }
+  );
+  const colorRange = useColorRange(globalStats);
   const voronoiGeoJSON = useVoronoiGeoJSON(currentPredictions);
   const timeSeriesData = useTimeSeriesData({ predictions, modelInfo, selectedNode });
 
