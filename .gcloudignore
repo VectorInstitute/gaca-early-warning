@@ -1,0 +1,71 @@
+# This file specifies files that should not be uploaded to Cloud Build
+# when deploying from the project root
+
+# Node.js / Frontend
+app/node_modules/
+app/.next/
+app/.turbo/
+app/out/
+app/build/
+app/dist/
+app/.env.local
+app/.env*.local
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+*.egg-info/
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation (keep README.md for backend)
+docs/
+site/
+*.md
+!README.md
+
+# Git
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# CI/CD
+.pre-commit-config.yaml
+
+# Notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# Deployment artifacts
+.deployment-urls
+
+# Test files
+tests/
+test_*.py
+*_test.py

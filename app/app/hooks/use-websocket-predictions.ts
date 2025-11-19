@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { Prediction } from "../types";
+import { API_BASE_URL } from "../constants";
 
 export interface ProgressUpdate {
   step: string;
@@ -11,7 +12,14 @@ interface UsePredictionsOptions {
   onProgress?: (update: ProgressUpdate) => void;
 }
 
-const WS_URL = "ws://localhost:8000/ws/predict";
+// Convert HTTP/HTTPS API URL to WebSocket URL
+const getWebSocketURL = (baseUrl: string): string => {
+  const wsProtocol = baseUrl.startsWith("https://") ? "wss://" : "ws://";
+  const urlWithoutProtocol = baseUrl.replace(/^https?:\/\//, "");
+  return `${wsProtocol}${urlWithoutProtocol}/ws/predict`;
+};
+
+const WS_URL = getWebSocketURL(API_BASE_URL);
 
 /**
  * Custom hook to manage WebSocket-based predictions with real-time progress

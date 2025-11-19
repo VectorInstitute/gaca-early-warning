@@ -19,7 +19,7 @@ images:
 
 substitutions:
   _IMAGE_NAME: 'gcr.io/${PROJECT_ID}/gaca-ews-dashboard'
-  _NEXT_PUBLIC_API_URL: 'http://localhost:8080'
+  _NEXT_PUBLIC_API_URL: 'http://localhost:8000'
   _NEXT_PUBLIC_MAPBOX_TOKEN: ''
 
 options:

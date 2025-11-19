@@ -201,14 +201,14 @@ if [[ "${DEPLOY_BACKEND}" == "true" ]]; then
     BACKEND_DEPLOY_CMD+=(--no-allow-unauthenticated)
   fi
 
-  # Run deployment with error handling (gcloud may return error even on eventual success)
+  # Run deployment
   if [[ "${DRY_RUN}" == "false" ]]; then
-    if "${BACKEND_DEPLOY_CMD[@]}" 2>&1; then
-      echo -e "${GREEN}✓${NC} Backend deployment command completed"
-    else
-      echo -e "${YELLOW}⚠${NC} Backend deployment command returned an error, verifying service status..."
-      sleep 10  # Wait for service to stabilize
+    if ! "${BACKEND_DEPLOY_CMD[@]}"; then
+      echo -e "${RED}✗ Backend deployment failed${NC}"
+      echo -e "${YELLOW}Check build logs at:${NC} https://console.cloud.google.com/cloud-build/builds?project=${PROJECT_ID}"
+      exit 1
     fi
+    echo -e "${GREEN}✓${NC} Backend deployment command completed"
   else
     run_cmd "${BACKEND_DEPLOY_CMD[@]}"
   fi
@@ -308,17 +308,23 @@ if [[ "${DEPLOY_APP}" == "true" ]]; then
     echo -e "${GREEN}▶${NC} gcloud builds submit --config=cloudbuild.yaml"
 
     if [[ -n "${MAPBOX_TOKEN}" ]]; then
-      gcloud builds submit "${APP_DIR}" \
+      if ! gcloud builds submit "${APP_DIR}" \
         --config="${APP_DIR}/cloudbuild.yaml" \
         --substitutions="_IMAGE_NAME=${IMAGE_NAME},_NEXT_PUBLIC_API_URL=${BACKEND_URL},_NEXT_PUBLIC_MAPBOX_TOKEN=${MAPBOX_TOKEN}" \
         --project="${PROJECT_ID}" \
-        --region="${REGION}"
+        --region="${REGION}"; then
+        echo -e "${RED}✗ Frontend build failed${NC}"
+        exit 1
+      fi
     else
-      gcloud builds submit "${APP_DIR}" \
+      if ! gcloud builds submit "${APP_DIR}" \
         --config="${APP_DIR}/cloudbuild.yaml" \
         --substitutions="_IMAGE_NAME=${IMAGE_NAME},_NEXT_PUBLIC_API_URL=${BACKEND_URL}" \
         --project="${PROJECT_ID}" \
-        --region="${REGION}"
+        --region="${REGION}"; then
+        echo -e "${RED}✗ Frontend build failed${NC}"
+        exit 1
+      fi
     fi
 
     echo -e "${GREEN}✓${NC} Frontend image built successfully"
@@ -346,14 +352,14 @@ if [[ "${DEPLOY_APP}" == "true" ]]; then
     APP_DEPLOY_CMD+=(--no-allow-unauthenticated)
   fi
 
-  # Run deployment with error handling
+  # Run deployment
   if [[ "${DRY_RUN}" == "false" ]]; then
-    if "${APP_DEPLOY_CMD[@]}" 2>&1; then
-      echo -e "${GREEN}✓${NC} Dashboard deployment command completed"
-    else
-      echo -e "${YELLOW}⚠${NC} Dashboard deployment command returned an error, verifying service status..."
-      sleep 10  # Wait for service to stabilize
+    if ! "${APP_DEPLOY_CMD[@]}"; then
+      echo -e "${RED}✗ Dashboard deployment failed${NC}"
+      echo -e "${YELLOW}Check build logs at:${NC} https://console.cloud.google.com/cloud-build/builds?project=${PROJECT_ID}"
+      exit 1
     fi
+    echo -e "${GREEN}✓${NC} Dashboard deployment command completed"
   else
     run_cmd "${APP_DEPLOY_CMD[@]}"
   fi
