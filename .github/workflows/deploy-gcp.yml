@@ -1,0 +1,547 @@
+name: Build and Deploy to GCP
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # Allow manual triggers
+
+# Prevent concurrent deployments
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false  # Don't cancel in-progress deployments
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GAR_LOCATION: us-central1
+  REPOSITORY: gaca-early-warning
+  SERVICE_BACKEND: gaca-ews-backend
+  SERVICE_FRONTEND: gaca-ews-dashboard
+  REGION: us-central1
+
+jobs:
+  # Build and test containers
+  build-and-test:
+    name: Build and Test Containers
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    outputs:
+      backend-image-tag: ${{ steps.meta.outputs.backend-tag }}
+      frontend-image-tag: ${{ steps.meta.outputs.frontend-tag }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Free up disk space
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+
+          # Remove unnecessary tools and files
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+          # Clean up Docker
+          docker system prune -af --volumes
+
+          echo "Disk space after cleanup:"
+          df -h
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+
+      - name: Generate image metadata
+        id: meta
+        run: |
+          echo "backend-tag=${{ env.SERVICE_BACKEND }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "frontend-tag=${{ env.SERVICE_FRONTEND }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "Build ID: ${{ github.sha }}"
+
+      # Backend Build
+      - name: Build backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./backend/Dockerfile
+          push: false
+          load: true
+          tags: gaca-ews:backend-${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      # Backend Tests
+      - name: Test backend container
+        if: github.actor != 'dependabot[bot]'
+        run: |
+          set -e
+
+          echo "Starting backend container..."
+          docker run -d \
+            --name backend-test \
+            --health-cmd="curl -f http://localhost:8080/health || exit 1" \
+            --health-interval=10s \
+            --health-timeout=10s \
+            --health-retries=30 \
+            --health-start-period=60s \
+            -p 8080:8080 \
+            gaca-ews:backend-${{ github.sha }}
+
+          # Wait for backend to be healthy (model loading takes time)
+          echo "Waiting for backend to be healthy (this may take 3-5 minutes for model loading)..."
+          TIMEOUT=300
+          ELAPSED=0
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' backend-test)
+            echo "  Health status: $HEALTH_STATUS (${ELAPSED}s elapsed)"
+
+            if [ "$HEALTH_STATUS" = "healthy" ]; then
+              echo "✓ Backend is healthy"
+              break
+            fi
+
+            if [ "$(docker inspect --format='{{.State.Status}}' backend-test)" != "running" ]; then
+              echo "✗ Backend container stopped unexpectedly"
+              docker logs backend-test
+              exit 1
+            fi
+
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+          done
+
+          if [ $ELAPSED -ge $TIMEOUT ]; then
+            echo "✗ Backend health check timeout after ${TIMEOUT}s"
+            echo "Container logs:"
+            docker logs backend-test
+            exit 1
+          fi
+
+          # Verify health endpoint
+          echo "Testing health endpoint..."
+          HEALTH_RESPONSE=$(curl -s http://localhost:8080/health)
+          echo "Health response: $HEALTH_RESPONSE"
+
+          if ! echo "$HEALTH_RESPONSE" | grep -q '"status":"healthy"'; then
+            echo "✗ Unexpected health response"
+            exit 1
+          fi
+
+          echo "✓ Backend tests passed"
+
+      - name: Cleanup backend test and free disk space
+        if: always()
+        run: |
+          # Stop and remove test container
+          docker stop backend-test || true
+          docker rm backend-test || true
+
+          # Remove backend image to free space
+          docker rmi gaca-ews:backend-${{ github.sha }} || true
+
+          # Aggressive cleanup
+          docker system prune -af --volumes
+
+          echo "Disk space after backend cleanup:"
+          df -h
+
+      # Frontend Build
+      - name: Build frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app
+          file: ./app/Dockerfile
+          push: false
+          load: true
+          tags: gaca-ews:frontend-${{ github.sha }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=http://localhost:8080
+            NEXT_PUBLIC_MAPBOX_TOKEN=${{ secrets.MAPBOX_TOKEN }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      # Frontend Tests
+      - name: Test frontend container
+        if: github.actor != 'dependabot[bot]'
+        run: |
+          set -e
+
+          echo "Starting frontend container..."
+          docker run -d \
+            --name frontend-test \
+            --health-interval=10s \
+            --health-timeout=10s \
+            --health-retries=20 \
+            --health-start-period=40s \
+            -p 3000:3000 \
+            gaca-ews:frontend-${{ github.sha }}
+
+          # Wait for container to be healthy
+          echo "Waiting for frontend to be healthy (Next.js build may take 1-2 minutes)..."
+          TIMEOUT=240
+          ELAPSED=0
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' frontend-test)
+            echo "  Health status: $HEALTH_STATUS (${ELAPSED}s elapsed)"
+
+            if [ "$HEALTH_STATUS" = "healthy" ]; then
+              echo "✓ Frontend is healthy"
+              break
+            fi
+
+            if [ "$(docker inspect --format='{{.State.Status}}' frontend-test)" != "running" ]; then
+              echo "✗ Frontend container stopped unexpectedly"
+              docker logs frontend-test
+              exit 1
+            fi
+
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+          done
+
+          if [ $ELAPSED -ge $TIMEOUT ]; then
+            echo "✗ Frontend health check timeout after ${TIMEOUT}s"
+            echo "Container logs:"
+            docker logs frontend-test
+            exit 1
+          fi
+
+          echo "✓ Frontend tests passed"
+
+      - name: Cleanup frontend test and free disk space
+        if: always()
+        run: |
+          # Stop and remove test container
+          docker stop frontend-test || true
+          docker rm frontend-test || true
+
+          # Remove frontend image to free space
+          docker rmi gaca-ews:frontend-${{ github.sha }} || true
+
+          # Final cleanup
+          docker system prune -af --volumes
+
+          echo "Disk space after all cleanups:"
+          df -h
+
+  # Deploy to Cloud Run
+  deploy:
+    name: Deploy to Cloud Run
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    outputs:
+      backend-url: ${{ steps.deploy-backend.outputs.url }}
+      backend-revision: ${{ steps.deploy-backend.outputs.revision }}
+      frontend-url: ${{ steps.deploy-frontend.outputs.url }}
+      frontend-revision: ${{ steps.deploy-frontend.outputs.revision }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Free up disk space for deployment
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+
+          # Remove unnecessary tools
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+          # Clean Docker
+          docker system prune -af --volumes
+
+          echo "Disk space after cleanup:"
+          df -h
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build and push backend
+      - name: Build and push backend image to GAR
+        id: build-backend
+        run: |
+          set -e
+
+          IMAGE_PATH="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_BACKEND }}"
+
+          echo "Building backend image..."
+          DOCKER_BUILDKIT=1 docker build \
+            -t "${IMAGE_PATH}:${{ github.sha }}" \
+            -t "${IMAGE_PATH}:latest" \
+            -f ./backend/Dockerfile \
+            .
+
+          echo "Pushing backend image..."
+          docker push "${IMAGE_PATH}:${{ github.sha }}"
+          docker push "${IMAGE_PATH}:latest"
+
+          echo "image=${IMAGE_PATH}:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "✓ Backend image pushed"
+
+      # Deploy backend
+      - name: Deploy backend to Cloud Run
+        id: deploy-backend
+        run: |
+          set -e
+
+          echo "Deploying backend..."
+          gcloud run deploy ${{ env.SERVICE_BACKEND }} \
+            --image ${{ steps.build-backend.outputs.image }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --memory=2Gi \
+            --cpu=2 \
+            --timeout=300s \
+            --max-instances=5 \
+            --min-instances=0 \
+            --concurrency=10 \
+            --port=8080 \
+            --set-env-vars="DEPLOYMENT_SHA=${{ github.sha }}" \
+            --update-labels="deployed-by=github-actions,commit=${{ github.sha }}" \
+            --update-annotations="git-commit=${{ github.sha }},git-ref=${{ github.ref }},deployed-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --quiet
+
+          # Route traffic to latest revision
+          echo "Routing traffic to latest revision..."
+          gcloud run services update-traffic ${{ env.SERVICE_BACKEND }} \
+            --to-latest \
+            --region ${{ env.REGION }} \
+            --quiet
+
+          # Get deployment info
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_BACKEND }} \
+            --region ${{ env.REGION }} \
+            --format 'value(status.url)')
+
+          REVISION_NAME=$(gcloud run services describe ${{ env.SERVICE_BACKEND }} \
+            --region ${{ env.REGION }} \
+            --format 'value(status.latestReadyRevisionName)')
+
+          echo "url=$SERVICE_URL" >> $GITHUB_OUTPUT
+          echo "revision=$REVISION_NAME" >> $GITHUB_OUTPUT
+
+          echo "✓ Backend deployed"
+          echo "  URL: $SERVICE_URL"
+          echo "  Revision: $REVISION_NAME"
+
+      # Verify backend deployment
+      - name: Verify backend health
+        run: |
+          set -e
+
+          BACKEND_URL="${{ steps.deploy-backend.outputs.url }}"
+          echo "Verifying backend health at $BACKEND_URL..."
+
+          MAX_RETRIES=30
+          RETRY_COUNT=0
+          BACKOFF=5
+
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if curl -sf --max-time 10 "${BACKEND_URL}/health" > /dev/null 2>&1; then
+              echo "✓ Backend health check passed"
+
+              # Verify model is loaded
+              MODEL_INFO=$(curl -sf "${BACKEND_URL}/model/info" || echo "")
+              if echo "$MODEL_INFO" | grep -q "model_architecture"; then
+                echo "✓ Model loaded successfully"
+              else
+                echo "⚠ Warning: Could not verify model status"
+              fi
+
+              exit 0
+            fi
+
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "Attempt $RETRY_COUNT/$MAX_RETRIES failed, waiting ${BACKOFF}s..."
+            sleep $BACKOFF
+
+            # Exponential backoff (max 30s)
+            BACKOFF=$((BACKOFF < 30 ? BACKOFF + 5 : 30))
+          done
+
+          echo "✗ Backend health check failed after $MAX_RETRIES attempts"
+          echo "Fetching recent logs..."
+          gcloud run services logs read ${{ env.SERVICE_BACKEND }} \
+            --region ${{ env.REGION }} \
+            --limit 50 || true
+          exit 1
+
+      # Cleanup before frontend build
+      - name: Free disk space before frontend build
+        run: |
+          # Remove backend images to free space
+          docker rmi $(docker images -q gaca-ews:backend-*) 2>/dev/null || true
+          docker system prune -af --volumes
+
+          echo "Disk space before frontend build:"
+          df -h
+
+      # Build and push frontend
+      - name: Build and push frontend image to GAR
+        id: build-frontend
+        run: |
+          set -e
+
+          IMAGE_PATH="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_FRONTEND }}"
+          BACKEND_URL="${{ steps.deploy-backend.outputs.url }}"
+
+          echo "Building frontend image with backend URL: $BACKEND_URL"
+          DOCKER_BUILDKIT=1 docker build \
+            -t "${IMAGE_PATH}:${{ github.sha }}" \
+            -t "${IMAGE_PATH}:latest" \
+            --build-arg NEXT_PUBLIC_API_URL="$BACKEND_URL" \
+            --build-arg NEXT_PUBLIC_MAPBOX_TOKEN="${{ secrets.MAPBOX_TOKEN }}" \
+            -f ./app/Dockerfile \
+            ./app
+
+          echo "Pushing frontend image..."
+          docker push "${IMAGE_PATH}:${{ github.sha }}"
+          docker push "${IMAGE_PATH}:latest"
+
+          echo "image=${IMAGE_PATH}:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "✓ Frontend image pushed"
+
+      # Deploy frontend
+      - name: Deploy frontend to Cloud Run
+        id: deploy-frontend
+        run: |
+          set -e
+
+          echo "Deploying frontend..."
+          gcloud run deploy ${{ env.SERVICE_FRONTEND }} \
+            --image ${{ steps.build-frontend.outputs.image }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --memory=1Gi \
+            --cpu=1 \
+            --timeout=60s \
+            --max-instances=10 \
+            --min-instances=0 \
+            --concurrency=80 \
+            --port=3000 \
+            --set-env-vars="DEPLOYMENT_SHA=${{ github.sha }}" \
+            --update-labels="deployed-by=github-actions,commit=${{ github.sha }}" \
+            --update-annotations="git-commit=${{ github.sha }},git-ref=${{ github.ref }},deployed-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --quiet
+
+          # Route traffic to latest revision
+          echo "Routing traffic to latest revision..."
+          gcloud run services update-traffic ${{ env.SERVICE_FRONTEND }} \
+            --to-latest \
+            --region ${{ env.REGION }} \
+            --quiet
+
+          # Get deployment info
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_FRONTEND }} \
+            --region ${{ env.REGION }} \
+            --format 'value(status.url)')
+
+          REVISION_NAME=$(gcloud run services describe ${{ env.SERVICE_FRONTEND }} \
+            --region ${{ env.REGION }} \
+            --format 'value(status.latestReadyRevisionName)')
+
+          echo "url=$SERVICE_URL" >> $GITHUB_OUTPUT
+          echo "revision=$REVISION_NAME" >> $GITHUB_OUTPUT
+
+          echo "✓ Frontend deployed"
+          echo "  URL: $SERVICE_URL"
+          echo "  Revision: $REVISION_NAME"
+
+      # Verify frontend deployment
+      - name: Verify frontend health
+        run: |
+          set -e
+
+          FRONTEND_URL="${{ steps.deploy-frontend.outputs.url }}"
+          echo "Verifying frontend health at $FRONTEND_URL..."
+
+          MAX_RETRIES=30
+          RETRY_COUNT=0
+          BACKOFF=5
+
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if curl -sf --max-time 10 "${FRONTEND_URL}/api/health" > /dev/null 2>&1; then
+              echo "✓ Frontend health check passed"
+              exit 0
+            fi
+
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "Attempt $RETRY_COUNT/$MAX_RETRIES failed, waiting ${BACKOFF}s..."
+            sleep $BACKOFF
+
+            # Exponential backoff (max 30s)
+            BACKOFF=$((BACKOFF < 30 ? BACKOFF + 5 : 30))
+          done
+
+          echo "✗ Frontend health check failed after $MAX_RETRIES attempts"
+          echo "Fetching recent logs..."
+          gcloud run services logs read ${{ env.SERVICE_FRONTEND }} \
+            --region ${{ env.REGION }} \
+            --limit 50 || true
+          exit 1
+
+      # Generate deployment summary
+      - name: Generate deployment summary
+        if: always()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 🚀 Deployment Summary
+
+          **Commit:** \`${{ github.sha }}\`
+          **Branch:** \`${{ github.ref_name }}\`
+          **Triggered by:** @${{ github.actor }}
+
+          ### Backend Service
+          - **URL:** ${{ steps.deploy-backend.outputs.url }}
+          - **Revision:** \`${{ steps.deploy-backend.outputs.revision }}\`
+          - **Status:** ✅ Deployed
+
+          **Endpoints:**
+          - Health: ${{ steps.deploy-backend.outputs.url }}/health
+          - Model Info: ${{ steps.deploy-backend.outputs.url }}/model/info
+          - Predict: ${{ steps.deploy-backend.outputs.url }}/predict
+          - WebSocket: ${{ steps.deploy-backend.outputs.url }}/ws/predict
+
+          ### Frontend Service
+          - **URL:** ${{ steps.deploy-frontend.outputs.url }}
+          - **Revision:** \`${{ steps.deploy-frontend.outputs.revision }}\`
+          - **Status:** ✅ Deployed
+
+          ---
+          *Deployment completed at $(date -u +"%Y-%m-%d %H:%M:%S UTC")*
+          EOF

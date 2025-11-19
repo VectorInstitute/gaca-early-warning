@@ -209,6 +209,18 @@ if [[ "${DEPLOY_BACKEND}" == "true" ]]; then
       exit 1
     fi
     echo -e "${GREEN}✓${NC} Backend deployment command completed"
+
+    # Ensure traffic is routed to the latest revision
+    echo -e "${CYAN}Routing traffic to latest revision...${NC}"
+    if ! gcloud run services update-traffic "${BACKEND_SERVICE_NAME}" \
+      --to-latest \
+      --region="${REGION}" \
+      --project="${PROJECT_ID}" \
+      --quiet; then
+      echo -e "${YELLOW}⚠${NC} Warning: Failed to update traffic routing, but deployment succeeded"
+    else
+      echo -e "${GREEN}✓${NC} Traffic routed to latest revision"
+    fi
   else
     run_cmd "${BACKEND_DEPLOY_CMD[@]}"
   fi
@@ -360,6 +372,18 @@ if [[ "${DEPLOY_APP}" == "true" ]]; then
       exit 1
     fi
     echo -e "${GREEN}✓${NC} Dashboard deployment command completed"
+
+    # Ensure traffic is routed to the latest revision
+    echo -e "${CYAN}Routing traffic to latest revision...${NC}"
+    if ! gcloud run services update-traffic "${APP_SERVICE_NAME}" \
+      --to-latest \
+      --region="${REGION}" \
+      --project="${PROJECT_ID}" \
+      --quiet; then
+      echo -e "${YELLOW}⚠${NC} Warning: Failed to update traffic routing, but deployment succeeded"
+    else
+      echo -e "${GREEN}✓${NC} Traffic routed to latest revision"
+    fi
   else
     run_cmd "${APP_DEPLOY_CMD[@]}"
   fi
