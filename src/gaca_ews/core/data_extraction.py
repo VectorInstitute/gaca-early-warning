@@ -65,26 +65,46 @@ def parse_timestamp_from_key(key: str) -> datetime | None:
 def get_most_recent_noaa_ts(
     s3_client: Any, bucket: str, hours_back: int
 ) -> tuple[datetime, list[datetime]]:
-    """Get the most recent timestamp in NOAA bucket and generate sequence."""
-    today = datetime.utcnow().strftime("%Y%m%d")
-    prefix = f"urma2p5.{today}/"
+    """Get the most recent timestamp in NOAA bucket and generate sequence.
 
-    resp = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
-
-    if "Contents" not in resp:
-        raise RuntimeError("no urma files found for today :/")
-
+    Checks multiple days backwards to handle UTC/local timezone differences
+    and NOAA data availability lag. This is important for users in timezones
+    behind UTC (e.g., EST/EDT in Ontario) where "today" in UTC may not have
+    data yet.
+    """
     timestamps = []
 
-    for obj in resp["Contents"]:
-        key = obj["Key"]
-        if key.endswith(".grb2_wexp") and "2dvaranl" in key:
-            ts = parse_timestamp_from_key(key)
-            if ts:
-                timestamps.append(ts)
+    # Check last 3 days to handle timezone differences and data lag
+    for days_back in range(3):
+        check_date = datetime.utcnow() - timedelta(days=days_back)
+        date_str = check_date.strftime("%Y%m%d")
+        prefix = f"urma2p5.{date_str}/"
+
+        logger.info(f"Checking for URMA data on {date_str}...")
+
+        try:
+            resp = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+
+            if "Contents" not in resp:
+                logger.info(f"No files found for {date_str}")
+                continue
+
+            for obj in resp["Contents"]:
+                key = obj["Key"]
+                if key.endswith(".grb2_wexp") and "2dvaranl" in key:
+                    ts = parse_timestamp_from_key(key)
+                    if ts:
+                        timestamps.append(ts)
+
+        except Exception as e:
+            logger.warning(f"Error checking {date_str}: {e}")
+            continue
 
     if not timestamps:
-        raise RuntimeError("no valid 2dvar hourly timestamps found today :(")
+        raise RuntimeError(
+            "No URMA 2dvaranl files found in the last 3 days. "
+            "Please check NOAA data availability or try again later."
+        )
 
     latest = max(timestamps)
 
