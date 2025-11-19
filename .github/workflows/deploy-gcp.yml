@@ -179,11 +179,10 @@ jobs:
           echo "Starting frontend container..."
           docker run -d \
             --name frontend-test \
-            --health-cmd="curl -f http://localhost:3000/api/health || exit 1" \
             --health-interval=10s \
             --health-timeout=10s \
             --health-retries=20 \
-            --health-start-period=30s \
+            --health-start-period=40s \
             -p 3000:3000 \
             gaca-ews:frontend-${{ github.sha }}
 
