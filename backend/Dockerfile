@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libeccodes-tools \
     libeccodes0 \
     wget \
+    curl \
     &&  rm -rf /var/lib/apt/lists/*
 
 # Set working directory
