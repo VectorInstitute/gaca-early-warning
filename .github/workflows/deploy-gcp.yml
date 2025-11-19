@@ -90,18 +90,22 @@ jobs:
           docker run -d \
             --name backend-test \
             --health-cmd="curl -f http://localhost:8080/health || exit 1" \
-            --health-interval=5s \
-            --health-timeout=3s \
-            --health-retries=10 \
+            --health-interval=10s \
+            --health-timeout=10s \
+            --health-retries=30 \
+            --health-start-period=60s \
             -p 8080:8080 \
             gaca-ews:backend-${{ github.sha }}
 
-          # Wait for container to be healthy
-          echo "Waiting for backend to be healthy..."
-          TIMEOUT=120
+          # Wait for backend to be healthy (model loading takes time)
+          echo "Waiting for backend to be healthy (this may take 3-5 minutes for model loading)..."
+          TIMEOUT=300
           ELAPSED=0
           while [ $ELAPSED -lt $TIMEOUT ]; do
-            if [ "$(docker inspect --format='{{.State.Health.Status}}' backend-test)" = "healthy" ]; then
+            HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' backend-test)
+            echo "  Health status: $HEALTH_STATUS (${ELAPSED}s elapsed)"
+
+            if [ "$HEALTH_STATUS" = "healthy" ]; then
               echo "✓ Backend is healthy"
               break
             fi
@@ -112,12 +116,13 @@ jobs:
               exit 1
             fi
 
-            sleep 5
-            ELAPSED=$((ELAPSED + 5))
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
           done
 
           if [ $ELAPSED -ge $TIMEOUT ]; then
-            echo "✗ Backend health check timeout"
+            echo "✗ Backend health check timeout after ${TIMEOUT}s"
+            echo "Container logs:"
             docker logs backend-test
             exit 1
           fi
@@ -175,18 +180,22 @@ jobs:
           docker run -d \
             --name frontend-test \
             --health-cmd="curl -f http://localhost:3000/api/health || exit 1" \
-            --health-interval=5s \
-            --health-timeout=3s \
-            --health-retries=15 \
+            --health-interval=10s \
+            --health-timeout=10s \
+            --health-retries=20 \
+            --health-start-period=30s \
             -p 3000:3000 \
             gaca-ews:frontend-${{ github.sha }}
 
           # Wait for container to be healthy
-          echo "Waiting for frontend to be healthy..."
-          TIMEOUT=180
+          echo "Waiting for frontend to be healthy (Next.js build may take 1-2 minutes)..."
+          TIMEOUT=240
           ELAPSED=0
           while [ $ELAPSED -lt $TIMEOUT ]; do
-            if [ "$(docker inspect --format='{{.State.Health.Status}}' frontend-test)" = "healthy" ]; then
+            HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' frontend-test)
+            echo "  Health status: $HEALTH_STATUS (${ELAPSED}s elapsed)"
+
+            if [ "$HEALTH_STATUS" = "healthy" ]; then
               echo "✓ Frontend is healthy"
               break
             fi
@@ -197,12 +206,13 @@ jobs:
               exit 1
             fi
 
-            sleep 5
-            ELAPSED=$((ELAPSED + 5))
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
           done
 
           if [ $ELAPSED -ge $TIMEOUT ]; then
-            echo "✗ Frontend health check timeout"
+            echo "✗ Frontend health check timeout after ${TIMEOUT}s"
+            echo "Container logs:"
             docker logs frontend-test
             exit 1
           fi
