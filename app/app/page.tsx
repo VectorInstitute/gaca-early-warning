@@ -56,7 +56,7 @@ export default function Home() {
   });
 
   // Data processing hooks
-  const { currentPredictions, spatialStats, globalStats, displayStats } = useStatistics(
+  const { currentPredictions, globalStats, displayStats } = useStatistics(
     {
       predictions,
       selectedHorizon,
