@@ -56,7 +56,7 @@ jobs:
         with:
           driver-opts: network=host
       - name: Build backend image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./backend/Dockerfile
@@ -156,7 +156,7 @@ jobs:
           driver-opts: network=host
 
       - name: Build frontend image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./app
           file: ./app/Dockerfile
@@ -290,7 +290,7 @@ jobs:
       # Build and push backend
       - name: Build and push backend image to GAR
         id: build-backend
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./backend/Dockerfile
@@ -401,7 +401,7 @@ jobs:
       # Build and push frontend
       - name: Build and push frontend image to GAR
         id: build-frontend
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./app
           file: ./app/Dockerfile
