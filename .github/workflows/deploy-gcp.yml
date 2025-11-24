@@ -27,6 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write  # Required for GCP authentication
+
+    outputs:
+      backend-image: ${{ steps.push-backend.outputs.image }}
 
     steps:
       - name: Checkout code
@@ -130,7 +134,67 @@ jobs:
         run: |
           docker stop backend-test || true
           docker rm backend-test || true
-          docker rmi gaca-ews:backend-${{ github.sha }} || true
+          # Keep image if pushing to main, otherwise remove it
+          if [ "${{ github.ref }}" != "refs/heads/main" ] || [ "${{ github.event_name }}" != "push" ]; then
+            docker rmi gaca-ews:backend-${{ github.sha }} || true
+          fi
+
+      # Push backend image to GAR (only on main push)
+      - name: Authenticate to Google Cloud
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Set up Cloud SDK
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker for Artifact Registry
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
+
+      - name: Create Artifact Registry repository
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          # Check if repository exists
+          if ! gcloud artifacts repositories describe ${{ env.REPOSITORY }} \
+            --location=${{ env.GAR_LOCATION }} \
+            --format="get(name)" 2>/dev/null; then
+            echo "Creating Artifact Registry repository: ${{ env.REPOSITORY }}"
+            gcloud artifacts repositories create ${{ env.REPOSITORY }} \
+              --repository-format=docker \
+              --location=${{ env.GAR_LOCATION }} \
+              --description="Docker repository for GACA Early Warning System" \
+              --quiet
+            echo "✓ Repository created"
+          else
+            echo "✓ Repository already exists"
+          fi
+
+      - name: Tag and push backend image to GAR
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        id: push-backend
+        run: |
+          set -e
+
+          IMAGE_URL="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_BACKEND }}:${{ github.sha }}"
+          LATEST_URL="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_BACKEND }}:latest"
+
+          echo "Tagging backend image..."
+          docker tag gaca-ews:backend-${{ github.sha }} "$IMAGE_URL"
+          docker tag gaca-ews:backend-${{ github.sha }} "$LATEST_URL"
+
+          echo "Pushing backend image to GAR..."
+          docker push "$IMAGE_URL"
+          docker push "$LATEST_URL"
+
+          echo "image=$IMAGE_URL" >> $GITHUB_OUTPUT
+          echo "✓ Backend image pushed: $IMAGE_URL"
 
   # Build and test frontend container (runs in parallel with backend)
   build-frontend:
@@ -225,6 +289,8 @@ jobs:
           docker rmi gaca-ews:frontend-${{ github.sha }} || true
 
   # Deploy to Cloud Run
+  # Note: This job reuses the pre-built backend image from build-backend job to save ~14 minutes
+  # Frontend is still rebuilt here because it needs the backend URL as a build arg
   deploy:
     name: Deploy to Cloud Run
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -287,27 +353,14 @@ jobs:
             echo "✓ Repository already exists"
           fi
 
-      # Build and push backend
-      - name: Build and push backend image to GAR
-        id: build-backend
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./backend/Dockerfile
-          push: true
-          tags: |
-            ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_BACKEND }}:${{ github.sha }}
-            ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_BACKEND }}:latest
-          cache-from: |
-            type=gha,scope=backend
-            type=registry,ref=${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_BACKEND }}:latest
-          cache-to: type=gha,mode=max,scope=backend
-
-      - name: Set backend image output
+      # Use pre-built backend image from build-backend job
+      - name: Verify backend image from build job
         id: set-backend-image
         run: |
-          echo "image=${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_BACKEND }}:${{ github.sha }}" >> $GITHUB_OUTPUT
-          echo "✓ Backend image pushed"
+          IMAGE_URL="${{ needs.build-backend.outputs.backend-image }}"
+          echo "Using pre-built backend image: $IMAGE_URL"
+          echo "image=$IMAGE_URL" >> $GITHUB_OUTPUT
+          echo "✓ Backend image ready (built in build-backend job)"
 
       # Deploy backend
       - name: Deploy backend to Cloud Run
