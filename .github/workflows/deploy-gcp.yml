@@ -29,9 +29,6 @@ jobs:
       contents: read
       id-token: write  # Required for GCP authentication
 
-    outputs:
-      backend-image: ${{ steps.push-backend.outputs.image }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -194,14 +191,6 @@ jobs:
 
           echo "✓ Backend image pushed: $IMAGE_URL"
 
-      # Set output (unconditional - required for job outputs to work properly)
-      - name: Set backend image output
-        id: push-backend
-        run: |
-          IMAGE_URL="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_BACKEND }}:${{ github.sha }}"
-          echo "image=$IMAGE_URL" >> $GITHUB_OUTPUT
-          echo "Backend image URL: $IMAGE_URL"
-
   # Build and test frontend container (runs in parallel with backend)
   build-frontend:
     name: Build and Test Frontend
@@ -359,20 +348,13 @@ jobs:
             echo "✓ Repository already exists"
           fi
 
-      # Use pre-built backend image from build-backend job
-      - name: Verify backend image from build job
+      # Construct backend image URL (matches what was pushed in build-backend job)
+      - name: Set backend image URL
         id: set-backend-image
         run: |
-          IMAGE_URL="${{ needs.build-backend.outputs.backend-image }}"
-
-          if [ -z "$IMAGE_URL" ]; then
-            echo "✗ Error: Backend image URL is empty"
-            echo "This should not happen - check build-backend job outputs"
-            exit 1
-          fi
-
-          echo "Using pre-built backend image: $IMAGE_URL"
+          IMAGE_URL="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_BACKEND }}:${{ github.sha }}"
           echo "image=$IMAGE_URL" >> $GITHUB_OUTPUT
+          echo "Using pre-built backend image: $IMAGE_URL"
           echo "✓ Backend image ready (built in build-backend job)"
 
       # Deploy backend
