@@ -4,6 +4,7 @@ This module provides functions to compute RMSE, MAE, and other evaluation
 metrics by comparing model predictions against NOAA ground truth observations.
 """
 
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -80,13 +81,17 @@ def fetch_ground_truth_for_predictions(
 
     try:
         # Fetch data using existing extraction function
-        noaa_data = fetch_last_hours(
-            hours_back=hours_back,
-            lat_min=predictions_df["lat"].min(),
-            lat_max=predictions_df["lat"].max(),
-            lon_min=predictions_df["lon"].min(),
-            lon_max=predictions_df["lon"].max(),
+        # Create config object matching expected signature
+        cfg = SimpleNamespace(
+            num_hours_to_fetch=hours_back,
+            region=SimpleNamespace(
+                lat_min=predictions_df["lat"].min(),
+                lat_max=predictions_df["lat"].max(),
+                lon_min=predictions_df["lon"].min(),
+                lon_max=predictions_df["lon"].max(),
+            ),
         )
+        noaa_data, _ = fetch_last_hours(cfg)
 
         # Convert to ground truth format
         ground_truth = []
@@ -214,10 +219,10 @@ def compute_evaluation_metrics(
 
     # Compute overall metrics
     overall_rmse = compute_rmse(
-        matched_df["predicted_temp"].values, matched_df["actual_temp"].values
+        matched_df["predicted_temp"].to_numpy(), matched_df["actual_temp"].to_numpy()
     )
     overall_mae = compute_mae(
-        matched_df["predicted_temp"].values, matched_df["actual_temp"].values
+        matched_df["predicted_temp"].to_numpy(), matched_df["actual_temp"].to_numpy()
     )
 
     # Compute metrics by horizon
@@ -227,12 +232,12 @@ def compute_evaluation_metrics(
 
         if len(horizon_data) > 0:
             rmse = compute_rmse(
-                horizon_data["predicted_temp"].values,
-                horizon_data["actual_temp"].values,
+                horizon_data["predicted_temp"].to_numpy(),
+                horizon_data["actual_temp"].to_numpy(),
             )
             mae = compute_mae(
-                horizon_data["predicted_temp"].values,
-                horizon_data["actual_temp"].values,
+                horizon_data["predicted_temp"].to_numpy(),
+                horizon_data["actual_temp"].to_numpy(),
             )
 
             by_horizon[str(int(horizon))] = {

@@ -189,9 +189,9 @@ def fetch_historical_range(
             for future in as_completed(future_to_ts):
                 ts = future_to_ts[future]
                 try:
-                    df = future.result()
-                    if df is not None:
-                        frames.append(df)
+                    result_df: pd.DataFrame | None = future.result()
+                    if result_df is not None:
+                        frames.append(result_df)
                     else:
                         failed_count += 1
                 except Exception as e:

@@ -296,14 +296,12 @@ export default function Home() {
                   )}
 
                   {/* Temperature Range */}
-                  {displayStats && (
-                    <TemperatureRange
-                      stats={displayStats}
-                      selectedNode={selectedNode}
-                      selectedHorizon={selectedHorizon}
-                      colorRange={colorRange}
-                    />
-                  )}
+                  <TemperatureRange
+                    stats={displayStats}
+                    selectedNode={selectedNode}
+                    selectedHorizon={selectedHorizon}
+                    colorRange={colorRange}
+                  />
 
                   {/* Model Info */}
                   {modelInfo && (
