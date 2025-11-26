@@ -1,0 +1,38 @@
+[
+  {
+    "name": "run_timestamp",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Timestamp when the model inference was run"
+  },
+  {
+    "name": "forecast_time",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Timestamp being forecasted"
+  },
+  {
+    "name": "horizon_hours",
+    "type": "INTEGER",
+    "mode": "REQUIRED",
+    "description": "Forecast horizon in hours"
+  },
+  {
+    "name": "lat",
+    "type": "FLOAT64",
+    "mode": "REQUIRED",
+    "description": "Latitude"
+  },
+  {
+    "name": "lon",
+    "type": "FLOAT64",
+    "mode": "REQUIRED",
+    "description": "Longitude"
+  },
+  {
+    "name": "predicted_temp",
+    "type": "FLOAT64",
+    "mode": "REQUIRED",
+    "description": "Predicted temperature in Celsius"
+  }
+]

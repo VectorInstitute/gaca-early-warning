@@ -4,6 +4,7 @@ A modern CLI for running temperature forecasts using the GCNGRU model.
 """
 
 import logging
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ from rich.table import Table
 from typing_extensions import Annotated
 
 from gaca_ews import __version__
+from gaca_ews.core.batch_data import extract_window, fetch_historical_range
 from gaca_ews.core.inference import InferenceEngine
 from gaca_ews.core.logger import get_logger, setup_console_logging
 
@@ -249,6 +251,249 @@ def predict(
 
         # Show summary
         _display_completion_summary(predictions, engine, output)
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]⚠ Operation cancelled by user[/yellow]")
+        raise typer.Exit(1) from None
+    except Exception as e:
+        console.print(f"\n[bold red]✗ Error:[/bold red] {e}")
+        if verbose:
+            console.print_exception()
+        raise typer.Exit(1) from e
+
+
+@app.command(name="batch-predict")
+def batch_predict(  # noqa: PLR0912, PLR0915
+    config: Annotated[
+        Path,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to configuration YAML file",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = Path("config.yaml"),
+    start_date: Annotated[
+        str,
+        typer.Option(
+            "--start-date",
+            help="Start date for batch predictions (YYYY-MM-DD HH:MM)",
+        ),
+    ] = "2024-02-06 12:00",
+    end_date: Annotated[
+        str,
+        typer.Option(
+            "--end-date",
+            help="End date for batch predictions (YYYY-MM-DD HH:MM)",
+        ),
+    ] = "2024-07-19 17:00",
+    interval_hours: Annotated[
+        int,
+        typer.Option(
+            "--interval",
+            help="Interval between predictions in hours",
+        ),
+    ] = 24,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Output directory for batch predictions",
+        ),
+    ] = None,
+    save_csv: Annotated[
+        bool,
+        typer.Option(
+            "--csv/--no-csv",
+            help="Save each prediction to separate CSV files",
+        ),
+    ] = True,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            "-v",
+            help="Show detailed logging output",
+        ),
+    ] = False,
+) -> None:
+    """Run batch predictions over a historical time period.
+
+    Generates predictions for multiple timestamps within a date range,
+    useful for validation, evaluation, and backtesting.
+
+    Example:
+        gaca-ews batch-predict --start-date "2024-02-06 12:00" \\
+            --end-date "2024-02-10 12:00"
+        gaca-ews batch-predict --start-date "2024-02-06 12:00" --interval 12
+    """
+    try:
+        # Set logger level
+        log_level = logging.INFO if verbose else logging.WARNING
+        logger = get_logger()
+        logger.setLevel(log_level)
+
+        # Parse dates
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d %H:%M")
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d %H:%M")
+        except ValueError:
+            console.print(
+                "[bold red]✗ Error:[/bold red] Invalid date format. Use YYYY-MM-DD HH:MM"
+            )
+            raise typer.Exit(1) from None
+
+        if start_dt >= end_dt:
+            console.print(
+                "[bold red]✗ Error:[/bold red] Start date must be before end date"
+            )
+            raise typer.Exit(1)
+
+        # Generate timestamps
+        timestamps = []
+        current = start_dt
+        while current <= end_dt:
+            timestamps.append(current)
+            current += timedelta(hours=interval_hours)
+
+        console.print()
+        console.print(
+            Panel.fit(
+                "[bold cyan]GACA Batch Prediction[/bold cyan]\n"
+                "[dim]Historical Temperature Forecasting[/dim]",
+                border_style="cyan",
+            )
+        )
+        console.print()
+
+        # Display batch info
+        info_table = Table(show_header=False, box=None, padding=(0, 2))
+        info_table.add_column(style="cyan")
+        info_table.add_column()
+        info_table.add_row("Start Date", start_dt.strftime("%Y-%m-%d %H:%M"))
+        info_table.add_row("End Date", end_dt.strftime("%Y-%m-%d %H:%M"))
+        info_table.add_row("Interval", f"{interval_hours} hours")
+        info_table.add_row("Total Runs", str(len(timestamps)))
+        console.print(info_table)
+        console.print()
+
+        # Initialize engine
+        engine = InferenceEngine(config)
+
+        # Set output directory
+        if output is None:
+            output = Path(engine.config.get("run_dir", "./batch_predictions"))
+        output = Path(output)
+        output.mkdir(parents=True, exist_ok=True)
+
+        # Load artifacts once
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            load_task = progress.add_task(
+                "[cyan]Loading model artifacts...", total=None
+            )
+            engine.load_artifacts()
+            progress.remove_task(load_task)
+
+        # Fetch all historical data once (optimized approach)
+        console.print("[bold]Step 1: Fetching historical NOAA data...[/bold]\n")
+
+        # Add buffer to ensure we have enough data for the first window
+        data_start = start_dt - timedelta(hours=engine.config["num_hours_to_fetch"])
+        cache_file = output / "noaa_data_cache.parquet"
+
+        try:
+            full_data = fetch_historical_range(
+                start_date=data_start,
+                end_date=end_dt,
+                lat_min=engine.config["region"]["lat_min"],
+                lat_max=engine.config["region"]["lat_max"],
+                lon_min=engine.config["region"]["lon_min"],
+                lon_max=engine.config["region"]["lon_max"],
+                cache_file=cache_file,
+            )
+        except Exception as e:
+            console.print(f"[red]✗ Failed to fetch historical data: {e}[/red]")
+            raise typer.Exit(1) from e
+
+        # Run batch predictions using cached data
+        console.print("\n[bold]Step 2: Running batch predictions...[/bold]\n")
+
+        successful = 0
+        failed = 0
+        failed_timestamps = []
+
+        for i, ts in enumerate(timestamps, 1):
+            console.print(
+                f"[cyan]({i}/{len(timestamps)})[/cyan] {ts.strftime('%Y-%m-%d %H:%M')}...",
+                end=" ",
+            )
+
+            try:
+                # Extract time window from cached data
+                data = extract_window(
+                    full_data,
+                    target_datetime=ts,
+                    hours_back=engine.config["num_hours_to_fetch"],
+                )
+
+                if data is None or len(data) == 0:
+                    console.print("[yellow]⚠ No data[/yellow]")
+                    failed += 1
+                    failed_timestamps.append((ts, "Insufficient data in window"))
+                    continue
+
+                # Preprocess and predict
+                X = engine.preprocess(data)
+                predictions = engine.predict(X)
+
+                # Save if requested
+                if save_csv:
+                    csv_filename = f"predictions_{ts.strftime('%Y%m%d_%H%M')}.csv"
+                    engine.save_predictions(predictions, ts, output / csv_filename)
+
+                console.print("[green]✓[/green]")
+                successful += 1
+
+            except KeyboardInterrupt:
+                console.print("\n[yellow]⚠ Cancelled by user[/yellow]")
+                raise typer.Exit(1) from None
+            except Exception as e:
+                console.print(f"[red]✗ {str(e)[:50]}[/red]")
+                failed += 1
+                failed_timestamps.append((ts, str(e)))
+                if verbose:
+                    logger.exception(f"Failed for {ts}")
+
+        # Display summary
+        console.print()
+        summary = (
+            f"[bold green]✓ Batch Complete![/bold green]\n\n"
+            f"[green]Successful:[/green] {successful}/{len(timestamps)}\n"
+            f"[red]Failed:[/red] {failed}/{len(timestamps)}\n"
+            f"📂 Output: [cyan]{output}[/cyan]"
+        )
+
+        if failed_timestamps and verbose:
+            summary += "\n\n[bold]Failed Timestamps:[/bold]"
+            for ts, error in failed_timestamps[:5]:  # Show first 5
+                summary += f"\n  • {ts.strftime('%Y-%m-%d %H:%M')}: {error[:50]}"
+            if len(failed_timestamps) > 5:
+                summary += f"\n  ... and {len(failed_timestamps) - 5} more"
+
+        console.print(
+            Panel.fit(summary, border_style="green" if failed == 0 else "yellow")
+        )
+        console.print()
 
     except KeyboardInterrupt:
         console.print("\n[yellow]⚠ Operation cancelled by user[/yellow]")

@@ -259,3 +259,75 @@ def fetch_last_hours(cfg: Any) -> tuple[pd.DataFrame, datetime]:
         raise RuntimeError("no urma files found for recent hours! :(")
 
     return pd.concat(frames).reset_index(drop=True), latest
+
+
+def fetch_historical_hours(
+    target_datetime: datetime,
+    hours_back: int,
+    lat_min: float,
+    lat_max: float,
+    lon_min: float,
+    lon_max: float,
+) -> pd.DataFrame | None:
+    """Fetch NOAA URMA data for a specific historical datetime.
+
+    Parameters
+    ----------
+    target_datetime : datetime
+        The target datetime to fetch data for (end of the window)
+    hours_back : int
+        Number of hours of historical data to fetch before target_datetime
+    lat_min, lat_max, lon_min, lon_max : float
+        Region boundaries
+
+    Returns
+    -------
+    pd.DataFrame | None
+        Historical meteorological data or None if not available
+    """
+    bucket = "noaa-urma-pds"
+
+    s3 = boto3.client(
+        "s3",
+        region_name="us-east-1",
+        config=boto3.session.Config(signature_version=botocore.UNSIGNED),
+    )
+
+    # Generate timestamps for the lookback window
+    timestamps = [target_datetime - timedelta(hours=i) for i in range(hours_back)]
+    timestamps.reverse()
+
+    frames = []
+    for ts in timestamps:
+        date_str = ts.strftime("%Y%m%d")
+        hour_str = ts.strftime("%H")
+        prefix = f"urma2p5.{date_str}/"
+
+        try:
+            resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+            if "Contents" not in resp:
+                continue
+
+            # Find the specific file for this hour
+            for obj in resp["Contents"]:
+                key = obj["Key"]
+                if (
+                    key.endswith(".grb2_wexp")
+                    and f".t{hour_str}z" in key
+                    and "2dvaranl" in key
+                ):
+                    df = extract_grib_file(
+                        key, s3, bucket, lat_min, lat_max, lon_min, lon_max
+                    )
+                    if df is not None:
+                        frames.append(df)
+                    break
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch data for {ts}: {e}")
+            continue
+
+    if len(frames) == 0:
+        return None
+
+    return pd.concat(frames).reset_index(drop=True)
