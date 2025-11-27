@@ -1,0 +1,26 @@
+[
+  {
+    "name": "timestamp",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Observation timestamp"
+  },
+  {
+    "name": "lat",
+    "type": "FLOAT64",
+    "mode": "REQUIRED",
+    "description": "Latitude"
+  },
+  {
+    "name": "lon",
+    "type": "FLOAT64",
+    "mode": "REQUIRED",
+    "description": "Longitude"
+  },
+  {
+    "name": "actual_temp",
+    "type": "FLOAT64",
+    "mode": "REQUIRED",
+    "description": "Actual observed temperature in Celsius"
+  }
+]

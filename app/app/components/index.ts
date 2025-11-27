@@ -1,4 +1,5 @@
 export { Header } from "./header";
+export { CollapsedSidebar } from "./sidebar";
 export { StatCard } from "./stat-card";
 export { MapControls } from "./map-controls";
 export { MapLegend } from "./map-legend";

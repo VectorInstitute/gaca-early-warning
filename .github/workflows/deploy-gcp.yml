@@ -40,23 +40,73 @@ jobs:
           echo "Disk space before cleanup:"
           df -h
 
-          # Remove unnecessary tools and files
+          # Remove unnecessary tools and files to free up ~30GB
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/share/boost
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/.ghcup
+          sudo rm -rf /opt/hostedtoolcache
 
           # Clean up Docker
           docker system prune -af --volumes
 
+          # Clean apt cache
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+
           echo "Disk space after cleanup:"
           df -h
+
+      # Authenticate early for main branch builds
+      - name: Authenticate to Google Cloud (early for direct push)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        id: auth-early
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Set up Cloud SDK (early for direct push)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker for Artifact Registry (early)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
+
+      - name: Create Artifact Registry repository (early)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          if ! gcloud artifacts repositories describe ${{ env.REPOSITORY }} \
+            --location=${{ env.GAR_LOCATION }} \
+            --format="get(name)" 2>/dev/null; then
+            echo "Creating Artifact Registry repository: ${{ env.REPOSITORY }}"
+            gcloud artifacts repositories create ${{ env.REPOSITORY }} \
+              --repository-format=docker \
+              --location=${{ env.GAR_LOCATION }} \
+              --description="Docker repository for GACA Early Warning System" \
+              --quiet
+            echo "✓ Repository created"
+          else
+            echo "✓ Repository already exists"
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
-          driver-opts: network=host
-      - name: Build backend image
+          driver-opts: |
+            network=host
+            env.BUILDKIT_STEP_LOG_MAX_SIZE=10485760
+            env.BUILDKIT_STEP_LOG_MAX_SPEED=10485760
+          buildkitd-flags: --debug
+
+      - name: Build backend image (for testing)
+        if: github.actor != 'dependabot[bot]' && !(github.ref == 'refs/heads/main' && github.event_name == 'push')
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -66,6 +116,32 @@ jobs:
           tags: gaca-ews:backend-${{ github.sha }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
+          provenance: false  # Disable provenance to reduce output size
+          sbom: false  # Disable SBOM to reduce output size
+
+      - name: Build and push backend image to GAR (direct push, no local load)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./backend/Dockerfile
+          push: true
+          load: false
+          tags: |
+            ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_BACKEND }}:${{ github.sha }}
+            ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_BACKEND }}:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+          provenance: false
+          sbom: false
+
+      - name: Check disk space after build
+        if: always()
+        run: |
+          echo "Disk space after build:"
+          df -h
+          echo "Docker images:"
+          docker images
 
       # Backend Tests (skip on main push since tests already ran in PR)
       - name: Test backend container
@@ -131,65 +207,7 @@ jobs:
         run: |
           docker stop backend-test || true
           docker rm backend-test || true
-          # Keep image if pushing to main, otherwise remove it
-          if [ "${{ github.ref }}" != "refs/heads/main" ] || [ "${{ github.event_name }}" != "push" ]; then
-            docker rmi gaca-ews:backend-${{ github.sha }} || true
-          fi
-
-      # Push backend image to GAR (only on main push)
-      - name: Authenticate to Google Cloud
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        id: auth
-        uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-          token_format: access_token
-
-      - name: Set up Cloud SDK
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: google-github-actions/setup-gcloud@v3
-
-      - name: Configure Docker for Artifact Registry
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: |
-          gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
-
-      - name: Create Artifact Registry repository
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: |
-          # Check if repository exists
-          if ! gcloud artifacts repositories describe ${{ env.REPOSITORY }} \
-            --location=${{ env.GAR_LOCATION }} \
-            --format="get(name)" 2>/dev/null; then
-            echo "Creating Artifact Registry repository: ${{ env.REPOSITORY }}"
-            gcloud artifacts repositories create ${{ env.REPOSITORY }} \
-              --repository-format=docker \
-              --location=${{ env.GAR_LOCATION }} \
-              --description="Docker repository for GACA Early Warning System" \
-              --quiet
-            echo "✓ Repository created"
-          else
-            echo "✓ Repository already exists"
-          fi
-
-      - name: Tag and push backend image to GAR
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: |
-          set -e
-
-          IMAGE_URL="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_BACKEND }}:${{ github.sha }}"
-          LATEST_URL="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_BACKEND }}:latest"
-
-          echo "Tagging backend image..."
-          docker tag gaca-ews:backend-${{ github.sha }} "$IMAGE_URL"
-          docker tag gaca-ews:backend-${{ github.sha }} "$LATEST_URL"
-
-          echo "Pushing backend image to GAR..."
-          docker push "$IMAGE_URL"
-          docker push "$LATEST_URL"
-
-          echo "✓ Backend image pushed: $IMAGE_URL"
+          docker rmi gaca-ews:backend-${{ github.sha }} || true
 
   # Build and test frontend container (runs in parallel with backend)
   build-frontend:

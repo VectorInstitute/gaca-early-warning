@@ -68,3 +68,6 @@ TEST/
 # Deployment artifacts
 .deployment-urls
 /Dockerfile
+
+# predictions
+historical_predictions/

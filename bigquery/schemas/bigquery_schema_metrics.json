@@ -1,0 +1,20 @@
+[
+  {
+    "name": "evaluation_date",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "When the evaluation was computed"
+  },
+  {
+    "name": "eval_type",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Type of evaluation: static or dynamic"
+  },
+  {
+    "name": "metrics",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Computed metrics as JSON string (RMSE, MAE, etc.)"
+  }
+]

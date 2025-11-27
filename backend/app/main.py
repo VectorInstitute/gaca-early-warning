@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 from gaca_ews.core.inference import InferenceEngine
 from gaca_ews.core.logger import get_logger
+from gaca_ews.evaluation.storage import EvaluationStorage
 
 
 # Thread pool for running blocking operations
@@ -104,6 +105,14 @@ async def startup_event() -> None:
 
     app.state.engine = InferenceEngine("config.yaml")
     app.state.engine.load_artifacts()
+
+    # Initialize evaluation storage (only if BigQuery is available)
+    try:
+        app.state.eval_storage = EvaluationStorage()
+    except Exception as e:
+        logger.warning(
+            f"Failed to initialize BigQuery: {e}. Evaluation endpoints will be disabled."
+        )
 
 
 @app.get("/")
@@ -311,4 +320,191 @@ async def get_latest_predictions() -> dict[str, Any]:
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to read predictions: {str(e)}"
+        ) from e
+
+
+@app.get("/evaluation/static")
+async def get_static_evaluation() -> dict[str, Any]:
+    """Get static evaluation metrics (Feb 6, 2024 - July 19, 2024).
+
+    Uses BigQuery SQL aggregation for fast metrics computation.
+
+    Returns
+    -------
+    dict[str, Any]
+        Static evaluation metrics with RMSE/MAE by horizon
+    """
+    if not hasattr(app.state, "eval_storage"):
+        raise HTTPException(
+            status_code=503,
+            detail="Evaluation storage not available. BigQuery may not be configured.",
+        )
+
+    try:
+        # Define static evaluation period: Feb 6, 2024 - July 19, 2024
+        start_date = datetime(2024, 2, 6, 12, 0, 0)
+        end_date = datetime(2024, 7, 19, 17, 0, 0)
+
+        # Compute metrics using fast SQL aggregation in BigQuery
+        raw_metrics = app.state.eval_storage.compute_metrics_for_period(
+            start_date, end_date
+        )
+
+        # Restructure metrics to match frontend expectations
+        metrics = {
+            "overall": {
+                "rmse": raw_metrics["overall_rmse"],
+                "mae": raw_metrics["overall_mae"],
+                "sample_count": raw_metrics["total_samples"],
+            },
+            "by_horizon": raw_metrics["by_horizon"],
+        }
+
+        if raw_metrics["total_samples"] == 0:
+            return {
+                "message": "No predictions found for static evaluation period",
+                "evaluation_period": {
+                    "start": start_date.isoformat(),
+                    "end": end_date.isoformat(),
+                },
+                "metrics": metrics,
+            }
+
+        # Store computed metrics for caching
+        app.state.eval_storage.store_evaluation_metrics(
+            evaluation_date=datetime.now(),
+            metrics=raw_metrics,  # Store raw format internally
+            eval_type="static",
+        )
+
+        return {
+            "evaluation_period": {
+                "start": start_date.isoformat(),
+                "end": end_date.isoformat(),
+            },
+            "metrics": metrics,
+            "computed_at": datetime.now().isoformat(),
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to compute static evaluation: {str(e)}",
+        ) from e
+
+
+@app.get("/evaluation/dynamic")
+async def get_dynamic_evaluation() -> dict[str, Any]:
+    """Get dynamic evaluation metrics (rolling 1-month window).
+
+    Uses BigQuery SQL aggregation for fast metrics computation.
+
+    Returns
+    -------
+    dict[str, Any]
+        Dynamic evaluation metrics for last 30 days
+    """
+    if not hasattr(app.state, "eval_storage"):
+        raise HTTPException(
+            status_code=503,
+            detail="Evaluation storage not available. BigQuery may not be configured.",
+        )
+
+    try:
+        # Define dynamic evaluation window: last 30 days
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=30)
+
+        # Compute metrics using fast SQL aggregation in BigQuery
+        raw_metrics = app.state.eval_storage.compute_metrics_for_period(
+            start_date, end_date
+        )
+
+        # Restructure metrics to match frontend expectations
+        metrics = {
+            "overall": {
+                "rmse": raw_metrics["overall_rmse"],
+                "mae": raw_metrics["overall_mae"],
+                "sample_count": raw_metrics["total_samples"],
+            },
+            "by_horizon": raw_metrics["by_horizon"],
+        }
+
+        if raw_metrics["total_samples"] == 0:
+            return {
+                "message": "No predictions found for dynamic evaluation window",
+                "evaluation_window": {
+                    "start": start_date.isoformat(),
+                    "end": end_date.isoformat(),
+                    "days": 30,
+                },
+                "metrics": metrics,
+            }
+
+        # Store computed metrics
+        app.state.eval_storage.store_evaluation_metrics(
+            evaluation_date=datetime.now(),
+            metrics=raw_metrics,  # Store raw format internally
+            eval_type="dynamic",
+        )
+
+        return {
+            "evaluation_window": {
+                "start": start_date.isoformat(),
+                "end": end_date.isoformat(),
+                "days": 30,
+            },
+            "metrics": metrics,
+            "computed_at": datetime.now().isoformat(),
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to compute dynamic evaluation: {str(e)}",
+        ) from e
+
+
+@app.post("/evaluation/store-run")
+async def store_prediction_run() -> dict[str, Any]:
+    """Store the latest prediction run to BigQuery for evaluation.
+
+    Reads predictions from TEST/predictions.csv and stores them.
+
+    Returns
+    -------
+    dict[str, Any]
+        Status message with row count
+    """
+    if not hasattr(app.state, "eval_storage"):
+        raise HTTPException(
+            status_code=503,
+            detail="Evaluation storage not available. BigQuery may not be configured.",
+        )
+
+    predictions_file = Path("TEST/predictions.csv")
+
+    if not predictions_file.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="No predictions file found. Run inference first.",
+        )
+
+    try:
+        df = pd.read_csv(predictions_file)
+        run_timestamp = datetime.fromtimestamp(predictions_file.stat().st_mtime)
+
+        rows_loaded = app.state.eval_storage.store_predictions(df, run_timestamp)
+
+        return {
+            "status": "success",
+            "message": "Predictions stored successfully",
+            "rows_loaded": rows_loaded,
+            "run_timestamp": run_timestamp.isoformat(),
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to store predictions: {str(e)}",
         ) from e

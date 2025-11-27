@@ -30,7 +30,7 @@ export function Header() {
               Global AI Alliance for Climate Action
             </h1>
             <h2 className="text-sm font-semibold text-[#EB088A] mt-0.5">
-              Early Warning System
+              High-Resolution Forecasting
             </h2>
           </div>
         </div>
