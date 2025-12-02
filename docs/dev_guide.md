@@ -4,10 +4,12 @@
 
 The GACA EWS is a professional Python package with three interfaces:
 1. **Modern CLI** - Built with Typer and Rich for beautiful terminal output
-2. **FastAPI Backend** - REST API for programmatic access
-3. **Next.js Dashboard** - (In progress) Web UI for visualization
+2. **FastAPI Backend** - Automated forecasting with REST API
+3. **Next.js Dashboard** - Real-time forecast visualization
 
 All interfaces share the same core inference engine, ensuring code reuse and consistency.
+
+**Production Mode**: Backend runs automated hourly forecasts (at :15) and daily evaluations (00:30 UTC) using APScheduler. Predictions are stored in BigQuery. Dashboard auto-refreshes every 30 minutes with smart polling to minimize costs.
 
 ## Architecture: Code Reuse & Modularity
 
@@ -234,63 +236,29 @@ The API will be available at:
 #### GET /
 Root endpoint with API information
 
-**Response:**
-```json
-{
-  "message": "GACA Early Warning System API",
-  "version": "0.1.0",
-  "status": "online"
-}
-```
-
 #### GET /health
-Health check endpoint
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "model_loaded": true
-}
-```
+Health check and model loaded status
 
 #### GET /model/info
-Model configuration and information
+Model configuration and metadata
+
+#### GET /forecasts/latest-timestamp
+Lightweight endpoint to check for new data (minimizes BigQuery costs)
 
 **Response:**
 ```json
 {
-  "model_architecture": "GCNGRU",
-  "num_nodes": 14005,
-  "input_features": ["t2m", "d2m", "u10", "v10", "sp", "orog"],
-  "prediction_horizons": [1, 6, 12, 18, 24, 36, 48],
-  "region": {
-    "lat_min": 42.0,
-    "lat_max": 45.0,
-    "lon_min": -81.0,
-    "lon_max": -78.0
-  },
-  "status": "loaded"
+  "last_run_timestamp": "2024-12-02T15:15:00",
+  "has_data": true
 }
 ```
 
-#### POST /predict
-Run full inference pipeline
+**Use Case**: Frontend polls this every 30 min to check if new forecast available
 
-**Request:**
-```json
-{
-  "num_hours": 24
-}
-```
+#### GET /forecasts/latest
+Fetch latest predictions from BigQuery
 
-**Process:**
-1. Fetches 24 hours of NOAA URMA data
-2. Preprocesses features with spatial consistency
-3. Runs GCNGRU model for 7 forecast horizons
-4. Returns predictions for all 14,005 grid points
-
-**Response:** Array of 98,035 predictions (14,005 nodes × 7 horizons)
+**Response:**
 ```json
 [
   {
@@ -298,22 +266,172 @@ Run full inference pipeline
     "horizon_hours": 1,
     "lat": 42.00008,
     "lon": -80.84195,
-    "predicted_temp": 2.97
+    "predicted_temp": 2.97,
+    "run_timestamp": "2025-11-18T08:15:00"
   },
   ...
 ]
 ```
 
-#### GET /predictions/latest
-Retrieve most recent predictions from file
+#### GET /forecasts/status
+Scheduler status and last forecast run information
 
 **Response:**
 ```json
 {
-  "count": 98035,
-  "predictions": [...],
-  "file_timestamp": "2025-11-18T10:00:00"
+  "scheduler": {
+    "is_running": false,
+    "scheduler_active": true,
+    "last_run_timestamp": "2025-11-18T08:15:00",
+    "next_scheduled_run": "2025-11-18T09:15:00"
+  },
+  "last_forecast": {
+    "run_timestamp": "2025-11-18T08:15:00",
+    "prediction_count": 98035
+  }
 }
+```
+
+#### GET /scheduler/status
+Status of forecast and evaluation schedulers
+
+#### GET /evaluation/static
+Static evaluation metrics (Feb-Jul 2024)
+
+**Response:**
+```json
+{
+  "evaluation_period": {
+    "start": "2024-02-06T12:00:00",
+    "end": "2024-07-19T17:00:00"
+  },
+  "metrics": {
+    "overall": {
+      "rmse": 1.234,
+      "mae": 0.987,
+      "sample_count": 150000
+    },
+    "by_horizon": {
+      "1": {"rmse": 0.8, "mae": 0.6, "sample_count": 21000},
+      "6": {"rmse": 1.1, "mae": 0.85, "sample_count": 21000}
+    }
+  },
+  "computed_at": "2025-11-18T10:00:00"
+}
+```
+
+#### GET /evaluation/dynamic
+Rolling 30-day evaluation metrics
+
+**Response:**
+```json
+{
+  "evaluation_window": {
+    "start": "2025-10-19T00:00:00",
+    "end": "2025-11-18T00:00:00",
+    "days": 30
+  },
+  "metrics": {
+    "overall": {
+      "rmse": 1.156,
+      "mae": 0.923,
+      "sample_count": 42000
+    },
+    "by_horizon": {
+      "1": {"rmse": 0.75, "mae": 0.58, "sample_count": 6000}
+    }
+  },
+  "computed_at": "2025-11-18T00:30:00"
+}
+```
+
+### Setting Up Dynamic Evaluation
+
+Dynamic evaluation requires both predictions and ground truth data for the last 30 days.
+
+#### Initial Setup
+
+1. **Create BigQuery tables** (if not already done):
+```bash
+./bigquery/setup.sh your-project-id
+```
+
+2. **Populate last 30 days of data**:
+```bash
+# Set your GCP project ID
+export GCP_PROJECT_ID=your-project-id
+
+# Populate predictions and ground truth for last 30 days
+python scripts/populate_dynamic_evaluation.py
+
+# Or specify a different time window (e.g., last 7 days)
+python scripts/populate_dynamic_evaluation.py --days 7
+
+# Use custom interval (e.g., every 12 hours instead of 24)
+python scripts/populate_dynamic_evaluation.py --interval 12
+```
+
+**What the script does:**
+- Generates predictions for the last N days using batch inference
+- Stores predictions to BigQuery `predictions` table
+- Extracts ground truth from NOAA cache (t2m field)
+- Stores ground truth to BigQuery `ground_truth` table
+
+**Options:**
+- `--days N` - Number of days to populate (default: 30)
+- `--interval N` - Hours between predictions (default: 24)
+- `--config PATH` - Path to config file (default: config.yaml)
+- `--output DIR` - Output directory for temporary files (default: ./dynamic_eval_data)
+- `--skip-inference` - Only load existing CSVs and ground truth
+- `-v, --verbose` - Enable verbose output
+
+#### Ongoing Updates
+
+Once set up, the system automatically maintains the rolling window:
+
+- **Hourly Forecasts** (at :15): Add new predictions to BigQuery
+- **Daily Evaluation** (at 00:30 UTC): Compute metrics for last 30 days
+- **Frontend Auto-refresh** (every 30 min): Fetch updated metrics
+
+The rolling window logic ensures that:
+- Old predictions beyond 30 days are still stored but not included in metrics
+- New predictions are automatically incorporated into the rolling window
+- No manual intervention needed after initial setup
+
+#### Troubleshooting
+
+**No data showing on dashboard:**
+```bash
+# Check if BigQuery tables exist
+bq ls --project_id=your-project-id gaca_evaluation
+
+# Check prediction count
+bq query --project_id=your-project-id \
+  "SELECT COUNT(*) FROM gaca_evaluation.predictions"
+
+# Check ground truth count
+bq query --project_id=your-project-id \
+  "SELECT COUNT(*) FROM gaca_evaluation.ground_truth"
+
+# Re-run population script if needed
+python scripts/populate_dynamic_evaluation.py --days 30
+```
+
+**Metrics not updating daily:**
+```bash
+# Check evaluation scheduler status
+curl http://localhost:8000/scheduler/status
+
+# Manually trigger evaluation via Python
+python -c "
+from gaca_ews.evaluation.storage import EvaluationStorage
+from datetime import datetime, timedelta
+storage = EvaluationStorage()
+end = datetime.now()
+start = end - timedelta(days=30)
+metrics = storage.compute_metrics_for_period(start, end)
+print(metrics)
+"
 ```
 
 ## Testing

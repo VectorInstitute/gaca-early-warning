@@ -3,6 +3,12 @@
 This script extracts actual temperature observations from the cached NOAA data
 and stores them in BigQuery for evaluation purposes.
 
+IMPORTANT: The NOAA cache must include future observations beyond the last
+prediction run to cover all forecast horizons. The cache should extend to:
+    last_prediction_time + max_forecast_horizon (e.g., +48 hours)
+
+This is automatically handled by the batch-predict command.
+
 Usage:
     GCP_PROJECT_ID=coderd python scripts/load_ground_truth.py
 """

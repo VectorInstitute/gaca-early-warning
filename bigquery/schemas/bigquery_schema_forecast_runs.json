@@ -1,0 +1,38 @@
+[
+  {
+    "name": "run_timestamp",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Timestamp when the forecast run started"
+  },
+  {
+    "name": "status",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Run status: 'success' or 'error'"
+  },
+  {
+    "name": "duration_seconds",
+    "type": "FLOAT64",
+    "mode": "REQUIRED",
+    "description": "Duration of the forecast run in seconds"
+  },
+  {
+    "name": "records_generated",
+    "type": "INTEGER",
+    "mode": "REQUIRED",
+    "description": "Number of prediction records generated"
+  },
+  {
+    "name": "noaa_data_timestamp",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE",
+    "description": "Most recent NOAA data timestamp used for this forecast"
+  },
+  {
+    "name": "error_message",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Error message if status is 'error'"
+  }
+]

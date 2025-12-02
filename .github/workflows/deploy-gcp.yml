@@ -588,8 +588,9 @@ jobs:
           **Endpoints:**
           - Health: ${{ steps.deploy-backend.outputs.url }}/health
           - Model Info: ${{ steps.deploy-backend.outputs.url }}/model/info
-          - Predict: ${{ steps.deploy-backend.outputs.url }}/predict
-          - WebSocket: ${{ steps.deploy-backend.outputs.url }}/ws/predict
+          - Latest Forecasts: ${{ steps.deploy-backend.outputs.url }}/forecasts/latest
+          - Forecast Status: ${{ steps.deploy-backend.outputs.url }}/forecasts/status
+          - Logs: ${{ steps.deploy-backend.outputs.url }}/logs/forecast-runs
 
           ### Frontend Service
           - **URL:** ${{ steps.deploy-frontend.outputs.url }}

@@ -10,22 +10,20 @@ import type { MapMouseEvent } from "react-map-gl/mapbox";
 import type { HoverInfo, SelectedNode } from "./types";
 import {
   useModelInfo,
-  useWebSocketPredictions,
+  useAutoPredictions,
   useStatistics,
   useColorRange,
   useVoronoiGeoJSON,
   useTimeSeriesData,
 } from "./hooks";
-import type { ProgressUpdate } from "./hooks/use-websocket-predictions";
 import {
   Header,
   CollapsedSidebar,
   StatCard,
-  MapControls,
+  ForecastStatusDisplay,
   MapLegend,
   ForecastInfo,
   HoverTooltip,
-  LoadingOverlay,
   ErrorOverlay,
   EmptyState,
   TemperatureChart,
@@ -34,6 +32,7 @@ import {
   LoadingSkeleton,
   EmptyStats,
   HorizonSlider,
+  LoadingOverlay,
 } from "./components";
 import { MAP_STYLES, MAP_LAYER_STYLES } from "./config/color-scales";
 import {
@@ -48,13 +47,14 @@ export default function Home() {
   const [_mapLoaded, setMapLoaded] = useState(false);
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
-  const [currentProgress, setCurrentProgress] = useState<ProgressUpdate | null>(null);
 
   // Data fetching hooks
   const { modelInfo } = useModelInfo();
-  const { predictions, loading, error, fetchPredictions } = useWebSocketPredictions({
-    onProgress: (update) => setCurrentProgress(update),
-  });
+  const { predictions, status, loading, error, lastFetchTime, refresh } =
+    useAutoPredictions({
+      refreshInterval: 30 * 60 * 1000, // Check every 30 minutes (twice per hour)
+      enabled: true,
+    });
 
   // Data processing hooks
   const { currentPredictions, globalStats, displayStats } = useStatistics({
@@ -108,8 +108,8 @@ export default function Home() {
             >
               {/* Map Visualization */}
               <div className="flex-1 bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 overflow-hidden relative">
-                {loading && <LoadingOverlay progress={currentProgress} />}
                 {error && <ErrorOverlay error={error} />}
+                {loading && !error && <LoadingOverlay />}
 
                 <Map
                   initialViewState={{
@@ -198,8 +198,13 @@ export default function Home() {
                     <EmptyState />
                   )}
 
-                  {/* Run Forecast Button */}
-                  <MapControls onRunForecast={fetchPredictions} loading={loading} />
+                  {/* Forecast Status & Refresh */}
+                  <ForecastStatusDisplay
+                    status={status}
+                    lastFetchTime={lastFetchTime}
+                    onRefresh={refresh}
+                    loading={loading}
+                  />
 
                   {/* Legend */}
                   {voronoiGeoJSON.features.length > 0 && (

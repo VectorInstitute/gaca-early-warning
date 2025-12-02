@@ -393,3 +393,229 @@ class EvaluationStorage:
             }
             for row in results
         ]
+
+    def get_latest_predictions(self, limit: int = 1000) -> pd.DataFrame:
+        """Get the most recent prediction run from BigQuery.
+
+        Parameters
+        ----------
+        limit : int
+            Maximum number of predictions to return
+
+        Returns
+        -------
+        pd.DataFrame
+            Latest predictions with columns: forecast_time, horizon_hours,
+            lat, lon, predicted_temp, run_timestamp
+        """
+        query = f"""
+        SELECT
+            run_timestamp,
+            forecast_time,
+            horizon_hours,
+            lat,
+            lon,
+            predicted_temp
+        FROM `{self.project_id}.{self.dataset_id}.predictions`
+        WHERE run_timestamp = (
+            SELECT MAX(run_timestamp)
+            FROM `{self.project_id}.{self.dataset_id}.predictions`
+        )
+        ORDER BY forecast_time, horizon_hours, lat, lon
+        LIMIT @limit
+        """
+
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("limit", "INT64", limit),
+            ]
+        )
+
+        query_job = self.client.query(query, job_config=job_config)
+        return query_job.result().to_dataframe()
+
+    def log_forecast_run(
+        self,
+        run_timestamp: datetime,
+        status: str,
+        duration_seconds: float,
+        records_generated: int,
+        noaa_data_timestamp: datetime | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        """Log a forecast run to the forecast_runs table.
+
+        Parameters
+        ----------
+        run_timestamp : datetime
+            Timestamp when the forecast run started
+        status : str
+            Status: "success" or "error"
+        duration_seconds : float
+            Duration of the forecast run in seconds
+        records_generated : int
+            Number of prediction records generated
+        noaa_data_timestamp : datetime | None
+            Most recent NOAA data timestamp used for this forecast
+        error_message : str | None
+            Error message if status is "error"
+        """
+        table_id = f"{self.project_id}.{self.dataset_id}.forecast_runs"
+
+        df = pd.DataFrame(
+            [
+                {
+                    "run_timestamp": run_timestamp,
+                    "status": status,
+                    "duration_seconds": duration_seconds,
+                    "records_generated": records_generated,
+                    "noaa_data_timestamp": noaa_data_timestamp,
+                    "error_message": error_message,
+                }
+            ]
+        )
+
+        df["run_timestamp"] = pd.to_datetime(df["run_timestamp"])
+        if noaa_data_timestamp is not None:
+            df["noaa_data_timestamp"] = pd.to_datetime(df["noaa_data_timestamp"])
+
+        job_config = bigquery.LoadJobConfig(
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            schema=[
+                bigquery.SchemaField("run_timestamp", "TIMESTAMP", mode="REQUIRED"),
+                bigquery.SchemaField("status", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("duration_seconds", "FLOAT64", mode="REQUIRED"),
+                bigquery.SchemaField("records_generated", "INTEGER", mode="REQUIRED"),
+                bigquery.SchemaField(
+                    "noaa_data_timestamp", "TIMESTAMP", mode="NULLABLE"
+                ),
+                bigquery.SchemaField("error_message", "STRING", mode="NULLABLE"),
+            ],
+        )
+
+        job = self.client.load_table_from_dataframe(df, table_id, job_config=job_config)
+        job.result()
+
+    def get_forecast_logs(self, limit: int = 100) -> list[dict[str, Any]]:
+        """Get recent forecast run logs.
+
+        Parameters
+        ----------
+        limit : int
+            Maximum number of logs to return
+
+        Returns
+        -------
+        list[dict[str, Any]]
+            List of forecast run logs ordered by run_timestamp descending
+
+        Raises
+        ------
+        Exception
+            If the forecast_runs table doesn't exist yet
+        """
+        query = f"""
+        SELECT
+            run_timestamp,
+            status,
+            duration_seconds,
+            records_generated,
+            noaa_data_timestamp,
+            error_message
+        FROM `{self.project_id}.{self.dataset_id}.forecast_runs`
+        ORDER BY run_timestamp DESC
+        LIMIT @limit
+        """
+
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("limit", "INT64", limit),
+            ]
+        )
+
+        try:
+            query_job = self.client.query(query, job_config=job_config)
+            results = query_job.result()
+
+            return [
+                {
+                    "run_timestamp": row["run_timestamp"].isoformat(),
+                    "status": row["status"],
+                    "duration_seconds": float(row["duration_seconds"]),
+                    "records_generated": int(row["records_generated"]),
+                    "noaa_data_timestamp": (
+                        row["noaa_data_timestamp"].isoformat()
+                        if row["noaa_data_timestamp"]
+                        else None
+                    ),
+                    "error_message": row["error_message"],
+                }
+                for row in results
+            ]
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "not found" in error_msg or "table" in error_msg:
+                raise Exception(
+                    f"forecast_runs table not found. Run: ./bigquery/setup.sh {self.project_id}"
+                ) from e
+            raise
+
+    def get_last_forecast_timestamp(self) -> str | None:
+        """Get just the timestamp of the most recent forecast run (lightweight).
+
+        This method is optimized for minimal BigQuery scanning by only reading
+        the partitioned column. Use this for polling/checking if new data exists.
+
+        Returns
+        -------
+        str | None
+            ISO format timestamp of last run, or None if no predictions exist
+        """
+        query = f"""
+        SELECT MAX(run_timestamp) as last_run
+        FROM `{self.project_id}.{self.dataset_id}.predictions`
+        """
+
+        query_job = self.client.query(query)
+        results = list(query_job.result())
+
+        if not results or results[0]["last_run"] is None:
+            return None
+
+        return results[0]["last_run"].isoformat()
+
+    def get_last_forecast_run_info(self) -> dict[str, Any] | None:
+        """Get information about the last forecast run.
+
+        Returns
+        -------
+        dict[str, Any] | None
+            Dictionary with run_timestamp, forecast_time_range, and count,
+            or None if no predictions exist
+        """
+        query = f"""
+        SELECT
+            MAX(run_timestamp) as last_run,
+            MIN(forecast_time) as earliest_forecast,
+            MAX(forecast_time) as latest_forecast,
+            COUNT(*) as prediction_count
+        FROM `{self.project_id}.{self.dataset_id}.predictions`
+        WHERE run_timestamp = (
+            SELECT MAX(run_timestamp)
+            FROM `{self.project_id}.{self.dataset_id}.predictions`
+        )
+        """
+
+        query_job = self.client.query(query)
+        results = list(query_job.result())
+
+        if not results or results[0]["last_run"] is None:
+            return None
+
+        row = results[0]
+        return {
+            "run_timestamp": row["last_run"].isoformat(),
+            "earliest_forecast": row["earliest_forecast"].isoformat(),
+            "latest_forecast": row["latest_forecast"].isoformat(),
+            "prediction_count": int(row["prediction_count"]),
+        }

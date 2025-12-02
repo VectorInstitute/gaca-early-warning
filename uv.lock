@@ -156,6 +156,18 @@ wheels = [
 ]
 
 [[package]]
+name = "apscheduler"
+version = "3.11.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tzlocal" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d0/81/192db4f8471de5bc1f0d098783decffb1e6e69c4f8b4bc6711094691950b/apscheduler-3.11.1.tar.gz", hash = "sha256:0db77af6400c84d1747fe98a04b8b58f0080c77d11d338c4f507a9752880f221", size = 108044 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/58/9f/d3c76f76c73fcc959d28e9def45b8b1cc3d7722660c5003b19c1022fd7f4/apscheduler-3.11.1-py3-none-any.whl", hash = "sha256:6162cb5683cb09923654fa9bdd3130c4be4bfda6ad8990971c9597ecd52965d2", size = 64278 },
+]
+
+[[package]]
 name = "asttokens"
 version = "3.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -851,12 +863,14 @@ name = "gaca-ews"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "apscheduler" },
     { name = "boto3" },
     { name = "botocore" },
     { name = "db-dtypes" },
     { name = "fastapi" },
     { name = "geopy" },
     { name = "google-cloud-bigquery" },
+    { name = "google-cloud-bigquery-storage" },
     { name = "joblib" },
     { name = "matplotlib" },
     { name = "networkx" },
@@ -865,6 +879,8 @@ dependencies = [
     { name = "pandas-gbq" },
     { name = "polars" },
     { name = "pyarrow" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
     { name = "pygrib" },
     { name = "pyyaml" },
     { name = "rich" },
@@ -872,6 +888,7 @@ dependencies = [
     { name = "torch" },
     { name = "torch-geometric" },
     { name = "typer" },
+    { name = "tzdata" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -901,12 +918,14 @@ docs = [
 
 [package.metadata]
 requires-dist = [
+    { name = "apscheduler", specifier = ">=3.10.4" },
     { name = "boto3" },
     { name = "botocore" },
     { name = "db-dtypes", specifier = ">=1.4.4" },
-    { name = "fastapi", specifier = ">=0.122.0" },
+    { name = "fastapi", specifier = ">=0.115.6" },
     { name = "geopy" },
     { name = "google-cloud-bigquery", specifier = ">=3.38.0" },
+    { name = "google-cloud-bigquery-storage", specifier = ">=2.26.0" },
     { name = "joblib" },
     { name = "matplotlib" },
     { name = "networkx" },
@@ -915,6 +934,8 @@ requires-dist = [
     { name = "pandas-gbq", specifier = ">=0.31.0" },
     { name = "polars", specifier = ">=1.35.0" },
     { name = "pyarrow", specifier = ">=18.1.0" },
+    { name = "pydantic", specifier = ">=2.10.5" },
+    { name = "pydantic-settings", specifier = ">=2.7.1" },
     { name = "pygrib" },
     { name = "pyyaml" },
     { name = "rich", specifier = ">=14.2.0" },
@@ -922,7 +943,8 @@ requires-dist = [
     { name = "torch" },
     { name = "torch-geometric" },
     { name = "typer", specifier = ">=0.20.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
+    { name = "tzdata", specifier = ">=2024.2" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -1047,6 +1069,22 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/07/b2/a17e40afcf9487e3d17db5e36728ffe75c8d5671c46f419d7b6528a5728a/google_cloud_bigquery-3.38.0.tar.gz", hash = "sha256:8afcb7116f5eac849097a344eb8bfda78b7cfaae128e60e019193dd483873520", size = 503666 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/39/3c/c8cada9ec282b29232ed9aed5a0b5cca6cf5367cb2ffa8ad0d2583d743f1/google_cloud_bigquery-3.38.0-py3-none-any.whl", hash = "sha256:e06e93ff7b245b239945ef59cb59616057598d369edac457ebf292bd61984da6", size = 259257 },
+]
+
+[[package]]
+name = "google-cloud-bigquery-storage"
+version = "2.34.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "google-api-core", extra = ["grpc"] },
+    { name = "google-auth" },
+    { name = "grpcio" },
+    { name = "proto-plus" },
+    { name = "protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e8/d2/42787f7843c1ebb386f1c54dd8d7cc16dc85d661dca74041626cd5d459e0/google_cloud_bigquery_storage-2.34.0.tar.gz", hash = "sha256:221740a991b3173027ebb0f3aa5f06c65bdf90fc4eb1b71da798093b6bf6d22d", size = 293674 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/46/7d/b347996d12a9da424eaccbbdcf831be39dfd2f81400fa912804379a5a237/google_cloud_bigquery_storage-2.34.0-py3-none-any.whl", hash = "sha256:5c1b55f2a33bfb0730cf5a2f7e4f0cc6a7166d9026142ab78c2ffd5130884c46", size = 295668 },
 ]
 
 [[package]]
@@ -2831,6 +2869,20 @@ wheels = [
 ]
 
 [[package]]
+name = "pydantic-settings"
+version = "2.12.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/43/4b/ac7e0aae12027748076d72a8764ff1c9d82ca75a7a52622e67ed3f765c54/pydantic_settings-2.12.0.tar.gz", hash = "sha256:005538ef951e3c2a68e1c08b292b5f2e71490def8589d4221b95dab00dafcfd0", size = 194184 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c1/60/5d4751ba3f4a40a6891f24eec885f51afd78d208498268c734e256fb13c4/pydantic_settings-2.12.0-py3-none-any.whl", hash = "sha256:fddb9fd99a5b18da837b29710391e945b1e30c135477f484084ee513adb93809", size = 51880 },
+]
+
+[[package]]
 name = "pydata-google-auth"
 version = "1.9.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3642,6 +3694,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/95/32/1a225d6164441be760d75c2c42e2780dc0873fe382da3e98a2e1e48361e5/tzdata-2025.2.tar.gz", hash = "sha256:b60a638fcc0daffadf82fe0f57e53d06bdec2f36c4df66280ae79bce6bd6f2b9", size = 196380 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5c/23/c7abc0ca0a1526a0774eca151daeb8de62ec457e77262b66b359c3c7679e/tzdata-2025.2-py2.py3-none-any.whl", hash = "sha256:1a403fada01ff9221ca8044d701868fa132215d84beb92242d9acd2147f667a8", size = 347839 },
+]
+
+[[package]]
+name = "tzlocal"
+version = "5.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8b/2e/c14812d3d4d9cd1773c6be938f89e5735a1f11a9f184ac3639b93cef35d5/tzlocal-5.3.1.tar.gz", hash = "sha256:cceffc7edecefea1f595541dbd6e990cb1ea3d19bf01b2809f362a03dd7921fd", size = 30761 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c2/14/e2a54fabd4f08cd7af1c07030603c3356b74da07f7cc056e600436edfa17/tzlocal-5.3.1-py3-none-any.whl", hash = "sha256:eb1a66c3ef5847adf7a834f1be0800581b683b5608e74f86ecbcef8ab91bb85d", size = 18026 },
 ]
 
 [[package]]

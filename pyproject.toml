@@ -23,11 +23,16 @@ dependencies = [
     "torch",
     "torch-geometric",
     "joblib",
-    "fastapi>=0.122.0",
-    "uvicorn[standard]>=0.32.0",
+    "fastapi>=0.115.6",
+    "uvicorn[standard]>=0.34.0",
+    "pydantic>=2.10.5",
+    "pydantic-settings>=2.7.1",
+    "apscheduler>=3.10.4",
+    "tzdata>=2024.2",
     "typer>=0.20.0",
     "rich>=14.2.0",
     "google-cloud-bigquery>=3.38.0",
+    "google-cloud-bigquery-storage>=2.26.0",
     "db-dtypes>=1.4.4",
     "pandas-gbq>=0.31.0",
 ]
@@ -93,6 +98,20 @@ strict_equality = true
 extra_checks = true
 mypy_path = "."
 
+# FastAPI backend has untyped decorators and uses Pydantic models
+[[tool.mypy.overrides]]
+module = "backend.app.*"
+allow_untyped_decorators = true
+allow_subclassing_any = true
+
+# CLI module has untyped decorators from Typer
+[[tool.mypy.overrides]]
+module = ["gaca_ews.cli.*", "gaca_ews.cli.main", "src.gaca_ews.cli.*", "src.gaca_ews.cli.main"]
+allow_untyped_decorators = true
+allow_subclassing_any = true
+allow_untyped_calls = true
+disallow_untyped_decorators = false
+
 [tool.ruff]
 include = ["*.py", "pyproject.toml", "*.ipynb"]
 exclude = []
@@ -131,6 +150,7 @@ ignore = [
     "D213", # Multi-line docstring summary should start at the second line
     "PLR2004", # Replace magic number with named constant
     "PLR0913", # Too many arguments
+    "PLR0915", # Too many statements (scheduler jobs, scripts with sequential steps)
     "COM812", # Missing trailing comma
     "ERA001", # Found commented-out code (too many false positives with math comments)
     "A001", # Ignore variable `input` is shadowing a Python builtin (common for torch)

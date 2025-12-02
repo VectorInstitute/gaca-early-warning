@@ -1,4 +1,6 @@
-# 🚨 GACA Early Warning System
+# Global AI Alliance for Climate Action
+
+# High-Resolution Temperature Forecasting
 
 ----------------------------------------------------------------------------------------
 
@@ -11,9 +13,14 @@
 
 ### **NOAA URMA → Graph Neural Network (GCN-GRU) Temperature Forecasting**
 
-This repository contains the **modular inference pipeline** for the **GACA Early Warning System**, a high-resolution Graph Neural Network framework that generates localized temperature forecasts from **NOAA URMA** meteorological data.
+Automated production forecasting system for Southwestern Ontario. Features hourly GCNGRU predictions stored in BigQuery with rolling 30-day evaluation metrics.
 
-The pipeline takes the most recent URMA hourly fields, preprocesses them into graph-structured tensors, and produces **multi-horizon (1–48h)** temperature predictions across thousands of spatial nodes in Southwestern Ontario.
+**Key Features:**
+- **Automated Forecasts**: Hourly execution at :15 past each hour
+- **Multi-Horizon**: 1, 6, 12, 18, 24, 36, 48-hour predictions
+- **Live Dashboard**: Real-time forecast visualization with auto-refresh
+- **CLI Tools**: Manual inference and batch prediction capabilities
+- **Evaluation**: Daily rolling 30-day RMSE/MAE metrics
 
 ---
 
@@ -40,6 +47,55 @@ uv sync --dev --group docs
 
 # Activate the virtual environment
 source .venv/bin/activate
+```
+
+---
+
+## Automated Forecasting System
+
+The backend runs automated hourly forecasts and daily evaluations using APScheduler:
+
+### Production Deployment
+
+**Forecasting Schedule:**
+- Runs hourly at :15 (after NOAA data availability)
+- Automatically stores predictions to BigQuery
+- CSV outputs saved to configurable directory
+
+**Evaluation Schedule:**
+- Runs daily at 00:30 UTC
+- Computes rolling 30-day metrics (RMSE/MAE)
+- SQL-based aggregation for efficiency
+
+**Dashboard:**
+- Auto-refreshes every 30 minutes
+- Smart polling checks for new data before fetching
+- Displays scheduler status and last update time
+- Manual refresh button available
+
+**Environment Variables:**
+```bash
+FORECAST_OUTPUT_DIR=forecasts/         # Output directory for CSVs
+GCP_PROJECT_ID=your-project-id         # BigQuery project (optional)
+BIGQUERY_DATASET=gaca_evaluation       # BigQuery dataset name
+```
+
+### CLI Usage
+
+The CLI remains unchanged and works independently of the automated system:
+
+```bash
+# Single forecast
+gaca-ews predict --config config.yaml --output results/
+
+# Batch predictions for date range
+gaca-ews batch-predict --start-date "2024-02-06 12:00" --end-date "2024-02-10 12:00" --interval 24
+
+# Model information
+gaca-ews info
+
+# Version
+gaca-ews version
 ```
 
 ---

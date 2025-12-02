@@ -128,6 +128,9 @@ def fetch_historical_range(
     # Check if cached file exists
     if cache_file and cache_file.exists():
         console.print(f"[cyan]Loading cached data from {cache_file}...[/cyan]")
+        console.print(
+            "[dim]Note: Delete cache file to force refresh if date range changed[/dim]"
+        )
 
         # Use Polars for fast Parquet reading
         df_pl = pl.read_parquet(cache_file)

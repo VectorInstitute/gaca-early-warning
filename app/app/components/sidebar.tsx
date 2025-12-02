@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, BarChart3 } from "lucide-react";
+import { Home, BarChart3, ScrollText } from "lucide-react";
 import { motion } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
@@ -25,6 +25,12 @@ export function CollapsedSidebar() {
       label: "Evaluation",
       path: "/evaluation",
       gradient: "from-[#313CFF] to-blue-600",
+    },
+    {
+      icon: ScrollText,
+      label: "Logs",
+      path: "/logs",
+      gradient: "from-emerald-500 to-teal-600",
     },
   ];
 
