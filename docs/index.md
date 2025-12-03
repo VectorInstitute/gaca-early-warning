@@ -1,6 +1,14 @@
+<div align="center">
+
+<img src="app/public/vector-logo.webp" alt="Vector Institute" width="200"/>
+
 # Global AI Alliance for Climate Action
 
-# High-Resolution Temperature Forecasting
+## High-Resolution Temperature Forecasting
+
+### NOAA URMA → Graph Neural Network (GCN-GRU) Temperature Forecasting
+
+</div>
 
 ----------------------------------------------------------------------------------------
 
@@ -9,9 +17,6 @@
 [![integration tests](https://github.com/VectorInstitute/gaca-early-warning/actions/workflows/integration_tests.yml/badge.svg)](https://github.com/VectorInstitute/gaca-early-warning/actions/workflows/integration_tests.yml)
 [![docs](https://github.com/VectorInstitute/gaca-early-warning/actions/workflows/docs.yml/badge.svg)](https://github.com/VectorInstitute/gaca-early-warning/actions/workflows/docs.yml)
 ![GitHub License](https://img.shields.io/github/license/VectorInstitute/gaca-early-warning)
-
-
-### **NOAA URMA → Graph Neural Network (GCN-GRU) Temperature Forecasting**
 
 Automated production forecasting system for Southwestern Ontario. Features hourly GCNGRU predictions stored in BigQuery with rolling 30-day evaluation metrics.
 
