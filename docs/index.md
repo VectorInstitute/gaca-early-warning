@@ -5,8 +5,6 @@
 
 ## High-Resolution Temperature Forecasting
 
-### NOAA URMA → Graph Neural Network (GCN-GRU) Temperature Forecasting
-
 </div>
 
 ----------------------------------------------------------------------------------------
