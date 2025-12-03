@@ -1,30 +1,25 @@
 """FastAPI application for GACA Early Warning System.
 
 This module provides a REST API for interacting with the GACA temperature
-forecasting model, including endpoints for running inference and retrieving
-predictions.
+forecasting model. The system runs automated hourly forecasts and daily
+evaluations using APScheduler.
 """
 
 import asyncio
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from backend.app.scheduler import EvaluationScheduler, ForecastScheduler
 from gaca_ews.core.inference import InferenceEngine
 from gaca_ews.core.logger import get_logger
 from gaca_ews.evaluation.storage import EvaluationStorage
-
-
-# Thread pool for running blocking operations
-executor = ThreadPoolExecutor(max_workers=1)
 
 
 app = FastAPI(
@@ -60,12 +55,6 @@ app.add_middleware(
 )
 
 
-class PredictionRequest(BaseModel):
-    """Request model for inference."""
-
-    num_hours: int = 24
-
-
 class PredictionResponse(BaseModel):
     """Response model for predictions."""
 
@@ -74,6 +63,7 @@ class PredictionResponse(BaseModel):
     lat: float
     lon: float
     predicted_temp: float
+    run_timestamp: str | None = None
 
 
 class FeatureMetadata(BaseModel):
@@ -98,21 +88,66 @@ class ModelInfo(BaseModel):
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    """Load model on startup."""
-    # Set logger to WARNING level for API to reduce noise
+    """Load model and start schedulers on startup."""
     logger = get_logger()
-    logger.setLevel(logging.WARNING)
+    logger.setLevel(logging.INFO)
 
+    logger.info("Initializing GACA Early Warning System...")
+
+    # Initialize inference engine
     app.state.engine = InferenceEngine("config.yaml")
     app.state.engine.load_artifacts()
+    logger.info("Model artifacts loaded successfully")
 
     # Initialize evaluation storage (only if BigQuery is available)
     try:
         app.state.eval_storage = EvaluationStorage()
+        logger.info("BigQuery storage initialized successfully")
     except Exception as e:
         logger.warning(
             f"Failed to initialize BigQuery: {e}. Evaluation endpoints will be disabled."
         )
+        app.state.eval_storage = None
+
+    # Initialize and start schedulers
+    forecast_output_dir = Path(os.getenv("FORECAST_OUTPUT_DIR", "forecasts"))
+    app.state.forecast_scheduler = ForecastScheduler(
+        engine=app.state.engine,
+        storage=app.state.eval_storage,
+        output_dir=forecast_output_dir,
+    )
+    app.state.forecast_scheduler.start()
+    logger.info("Forecast scheduler started (runs hourly at :15)")
+
+    if app.state.eval_storage:
+        app.state.eval_scheduler = EvaluationScheduler(storage=app.state.eval_storage)
+        app.state.eval_scheduler.start()
+        logger.info("Evaluation scheduler started (runs daily at 00:30 UTC)")
+    else:
+        logger.warning("Evaluation scheduler disabled (BigQuery not available)")
+
+    logger.info("=" * 80)
+    logger.info("GACA Early Warning System is online")
+    logger.info("Automated forecasting: ENABLED (hourly at :15)")
+    logger.info("Automated evaluation: ENABLED (daily at 00:30 UTC)")
+    logger.info("=" * 80)
+
+
+@app.on_event("shutdown")
+async def shutdown_event() -> None:
+    """Stop schedulers on shutdown."""
+    logger = get_logger()
+    logger.info("Shutting down GACA Early Warning System...")
+
+    if hasattr(app.state, "forecast_scheduler"):
+        app.state.forecast_scheduler.stop()
+        logger.info("Forecast scheduler stopped")
+
+    if hasattr(app.state, "eval_scheduler"):
+        app.state.eval_scheduler.stop()
+        logger.info("Evaluation scheduler stopped")
+
+    logger.info("Shutdown complete")
 
 
 @app.get("/")
@@ -169,158 +204,148 @@ async def get_model_info() -> ModelInfo:
     )
 
 
-async def run_pipeline_with_progress(
-    websocket: WebSocket | None = None,
-) -> list[PredictionResponse]:
-    """Run inference pipeline with progress updates via WebSocket."""
-    engine = app.state.engine
+@app.get("/forecasts/latest-timestamp")
+async def get_latest_forecast_timestamp() -> dict[str, Any]:
+    """Get just the timestamp of the most recent forecast (lightweight check).
 
-    async def send_progress(step: str, status: str = "in_progress") -> None:
-        """Send progress update via WebSocket."""
-        if websocket:
-            await websocket.send_json(
-                {
-                    "type": "progress",
-                    "step": step,
-                    "status": status,
-                    "timestamp": datetime.now().isoformat(),
-                }
-            )
+    This endpoint is optimized for polling to check if new data is available
+    without scanning full prediction data. Use this before calling
+    /forecasts/latest to minimize BigQuery costs.
 
-    try:
-        # Step 1: Load artifacts (if not already loaded)
-        await send_progress("Loading model artifacts", "in_progress")
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(executor, engine.load_artifacts)
-        await send_progress("Loading model artifacts", "completed")
-
-        # Step 2: Fetch data
-        await send_progress("Fetching NOAA meteorological data", "in_progress")
-        data, latest_ts = await loop.run_in_executor(executor, engine.fetch_data)
-        await send_progress("Fetching NOAA meteorological data", "completed")
-
-        # Step 3: Preprocess
-        await send_progress("Preprocessing features", "in_progress")
-        X = await loop.run_in_executor(executor, engine.preprocess, data)
-        await send_progress("Preprocessing features", "completed")
-
-        # Step 4: Run inference
-        await send_progress("Running model inference", "in_progress")
-        predictions = await loop.run_in_executor(executor, engine.predict, X)
-        await send_progress("Running model inference", "completed")
-
-        # Format response
-        num_pred_nodes = predictions.shape[2]
-        pred_offsets = engine.config["pred_offsets"]
-
-        response = []
-        for h_idx, horizon in enumerate(pred_offsets):
-            forecast_time = latest_ts + timedelta(hours=horizon)
-
-            for node_idx in range(num_pred_nodes):
-                lat = engine.nodes_df.iloc[node_idx]["lat"]
-                lon = engine.nodes_df.iloc[node_idx]["lon"]
-                pred_val = float(predictions[0, h_idx, node_idx, 0])
-
-                response.append(
-                    PredictionResponse(
-                        forecast_time=forecast_time.isoformat(),
-                        horizon_hours=horizon,
-                        lat=lat,
-                        lon=lon,
-                        predicted_temp=pred_val,
-                    )
-                )
-
-        return response
-
-    except Exception as e:
-        if websocket:
-            await websocket.send_json(
-                {
-                    "type": "error",
-                    "message": str(e),
-                    "timestamp": datetime.now().isoformat(),
-                }
-            )
-        raise
-
-
-@app.websocket("/ws/predict")
-async def websocket_predict(websocket: WebSocket) -> None:
-    """WebSocket endpoint for inference with real-time progress updates."""
-    await websocket.accept()
-
-    if not hasattr(app.state, "engine"):
-        await websocket.send_json({"type": "error", "message": "Model not loaded"})
-        await websocket.close()
-        return
-
-    try:
-        # Run pipeline with progress updates
-        response = await run_pipeline_with_progress(websocket)
-
-        # Send completion with data
-        await websocket.send_json(
-            {
-                "type": "complete",
-                "data": [pred.model_dump() for pred in response],
-                "timestamp": datetime.now().isoformat(),
-            }
-        )
-
-    except WebSocketDisconnect:
-        # Client disconnected normally; no error.
-        get_logger().debug("WebSocket client disconnected")
-    except Exception as e:
-        await websocket.send_json({"type": "error", "message": str(e)})
-    finally:
-        await websocket.close()
-
-
-@app.post("/predict", response_model=list[PredictionResponse])
-async def run_inference(request: PredictionRequest) -> list[PredictionResponse]:
-    """Run inference and return predictions (legacy REST endpoint)."""
-    if not hasattr(app.state, "engine"):
-        raise HTTPException(status_code=503, detail="Model not loaded")
-
-    try:
-        return await run_pipeline_with_progress(None)
-
-    except Exception as e:
+    Returns
+    -------
+    dict[str, Any]
+        Dictionary with last_run_timestamp or null if no forecasts exist
+    """
+    if not hasattr(app.state, "eval_storage") or app.state.eval_storage is None:
         raise HTTPException(
-            status_code=500, detail=f"Inference failed: {str(e)}"
-        ) from e
-
-
-@app.get("/predictions/latest")
-async def get_latest_predictions() -> dict[str, Any]:
-    """Get the most recent predictions from file if available."""
-    predictions_file = Path("TEST/predictions.csv")
-
-    if not predictions_file.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="No predictions file found. Run inference first.",
+            status_code=503,
+            detail="BigQuery storage not available.",
         )
 
     try:
-        df = pd.read_csv(predictions_file)
-
-        # Convert to list of dicts
-        predictions = df.to_dict(orient="records")
+        # Run BigQuery call in thread to avoid blocking event loop
+        timestamp = await asyncio.to_thread(
+            app.state.eval_storage.get_last_forecast_timestamp
+        )
 
         return {
-            "count": len(predictions),
-            "predictions": predictions,
-            "file_timestamp": datetime.fromtimestamp(
-                predictions_file.stat().st_mtime
-            ).isoformat(),
+            "last_run_timestamp": timestamp,
+            "has_data": timestamp is not None,
         }
+
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to read predictions: {str(e)}"
+            status_code=500,
+            detail=f"Failed to check forecast timestamp: {str(e)}",
         ) from e
+
+
+@app.get("/forecasts/latest", response_model=list[PredictionResponse])
+async def get_latest_forecasts() -> list[PredictionResponse]:
+    """Get the most recent forecast predictions from BigQuery.
+
+    Returns
+    -------
+    list[PredictionResponse]
+        Latest predictions with forecast times, locations, and temperatures
+    """
+    if not hasattr(app.state, "eval_storage") or app.state.eval_storage is None:
+        raise HTTPException(
+            status_code=503,
+            detail="BigQuery storage not available. Cannot retrieve forecasts.",
+        )
+
+    try:
+        # Run BigQuery call in thread to avoid blocking event loop
+        df = await asyncio.to_thread(
+            app.state.eval_storage.get_latest_predictions, limit=100000
+        )
+
+        if df.empty:
+            raise HTTPException(
+                status_code=404,
+                detail="No forecasts found. Waiting for first automated run.",
+            )
+
+        # Convert to response models (run in thread as iterrows can be slow)
+        def convert_to_responses() -> list[PredictionResponse]:
+            return [
+                PredictionResponse(
+                    forecast_time=row["forecast_time"].isoformat(),
+                    horizon_hours=int(row["horizon_hours"]),
+                    lat=float(row["lat"]),
+                    lon=float(row["lon"]),
+                    predicted_temp=float(row["predicted_temp"]),
+                    run_timestamp=row["run_timestamp"].isoformat(),
+                )
+                for _, row in df.iterrows()
+            ]
+
+        return await asyncio.to_thread(convert_to_responses)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve forecasts: {str(e)}"
+        ) from e
+
+
+@app.get("/forecasts/status")
+async def get_forecast_status() -> dict[str, Any]:
+    """Get information about the last forecast run and next scheduled run.
+
+    Returns
+    -------
+    dict[str, Any]
+        Status information including timestamps and scheduler state
+    """
+    if not hasattr(app.state, "forecast_scheduler"):
+        raise HTTPException(
+            status_code=503, detail="Forecast scheduler not initialized"
+        )
+
+    scheduler_status = app.state.forecast_scheduler.get_status()
+
+    # Get additional info from BigQuery if available (run in thread)
+    forecast_info = None
+    if hasattr(app.state, "eval_storage") and app.state.eval_storage:
+        try:
+            forecast_info = await asyncio.to_thread(
+                app.state.eval_storage.get_last_forecast_run_info
+            )
+        except Exception as e:
+            get_logger().warning(f"Failed to get forecast info from BigQuery: {e}")
+
+    return {
+        "scheduler": scheduler_status,
+        "last_forecast": forecast_info,
+    }
+
+
+@app.get("/scheduler/status")
+async def get_scheduler_status() -> dict[str, Any]:
+    """Get status of all schedulers (forecast and evaluation).
+
+    Returns
+    -------
+    dict[str, Any]
+        Status of forecast and evaluation schedulers
+    """
+    status = {}
+
+    if hasattr(app.state, "forecast_scheduler"):
+        status["forecast"] = app.state.forecast_scheduler.get_status()
+    else:
+        status["forecast"] = {"error": "Forecast scheduler not initialized"}
+
+    if hasattr(app.state, "eval_scheduler"):
+        status["evaluation"] = app.state.eval_scheduler.get_status()
+    else:
+        status["evaluation"] = {"error": "Evaluation scheduler not initialized"}
+
+    return status
 
 
 @app.get("/evaluation/static")
@@ -345,9 +370,9 @@ async def get_static_evaluation() -> dict[str, Any]:
         start_date = datetime(2024, 2, 6, 12, 0, 0)
         end_date = datetime(2024, 7, 19, 17, 0, 0)
 
-        # Compute metrics using fast SQL aggregation in BigQuery
-        raw_metrics = app.state.eval_storage.compute_metrics_for_period(
-            start_date, end_date
+        # Compute metrics using fast SQL aggregation in BigQuery (run in thread)
+        raw_metrics = await asyncio.to_thread(
+            app.state.eval_storage.compute_metrics_for_period, start_date, end_date
         )
 
         # Restructure metrics to match frontend expectations
@@ -370,8 +395,9 @@ async def get_static_evaluation() -> dict[str, Any]:
                 "metrics": metrics,
             }
 
-        # Store computed metrics for caching
-        app.state.eval_storage.store_evaluation_metrics(
+        # Store computed metrics for caching (run in thread)
+        await asyncio.to_thread(
+            app.state.eval_storage.store_evaluation_metrics,
             evaluation_date=datetime.now(),
             metrics=raw_metrics,  # Store raw format internally
             eval_type="static",
@@ -390,6 +416,56 @@ async def get_static_evaluation() -> dict[str, Any]:
         raise HTTPException(
             status_code=500,
             detail=f"Failed to compute static evaluation: {str(e)}",
+        ) from e
+
+
+@app.get("/logs/forecast-runs")
+async def get_forecast_logs(limit: int = 100) -> dict[str, Any]:
+    """Get recent forecast run logs.
+
+    Parameters
+    ----------
+    limit : int
+        Maximum number of logs to return (default: 100)
+
+    Returns
+    -------
+    dict[str, Any]
+        List of forecast run logs with metadata. If table doesn't exist,
+        returns setup_required: true
+    """
+    if not hasattr(app.state, "eval_storage") or app.state.eval_storage is None:
+        raise HTTPException(
+            status_code=503,
+            detail="BigQuery storage not available.",
+        )
+
+    try:
+        # Run BigQuery call in thread to avoid blocking event loop
+        logs = await asyncio.to_thread(
+            app.state.eval_storage.get_forecast_logs, limit=limit
+        )
+
+        return {
+            "count": len(logs),
+            "logs": logs,
+            "setup_required": False,
+        }
+
+    except Exception as e:
+        error_msg = str(e).lower()
+        if "not found" in error_msg and "forecast_runs" in error_msg:
+            # Table doesn't exist yet - return helpful message instead of error
+            return {
+                "count": 0,
+                "logs": [],
+                "setup_required": True,
+                "setup_command": f"./bigquery/setup.sh {app.state.eval_storage.project_id}",
+            }
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch forecast logs: {str(e)}",
         ) from e
 
 
@@ -415,9 +491,9 @@ async def get_dynamic_evaluation() -> dict[str, Any]:
         end_date = datetime.now()
         start_date = end_date - timedelta(days=30)
 
-        # Compute metrics using fast SQL aggregation in BigQuery
-        raw_metrics = app.state.eval_storage.compute_metrics_for_period(
-            start_date, end_date
+        # Compute metrics using fast SQL aggregation in BigQuery (run in thread)
+        raw_metrics = await asyncio.to_thread(
+            app.state.eval_storage.compute_metrics_for_period, start_date, end_date
         )
 
         # Restructure metrics to match frontend expectations
@@ -441,8 +517,9 @@ async def get_dynamic_evaluation() -> dict[str, Any]:
                 "metrics": metrics,
             }
 
-        # Store computed metrics
-        app.state.eval_storage.store_evaluation_metrics(
+        # Store computed metrics (run in thread)
+        await asyncio.to_thread(
+            app.state.eval_storage.store_evaluation_metrics,
             evaluation_date=datetime.now(),
             metrics=raw_metrics,  # Store raw format internally
             eval_type="dynamic",
@@ -462,49 +539,4 @@ async def get_dynamic_evaluation() -> dict[str, Any]:
         raise HTTPException(
             status_code=500,
             detail=f"Failed to compute dynamic evaluation: {str(e)}",
-        ) from e
-
-
-@app.post("/evaluation/store-run")
-async def store_prediction_run() -> dict[str, Any]:
-    """Store the latest prediction run to BigQuery for evaluation.
-
-    Reads predictions from TEST/predictions.csv and stores them.
-
-    Returns
-    -------
-    dict[str, Any]
-        Status message with row count
-    """
-    if not hasattr(app.state, "eval_storage"):
-        raise HTTPException(
-            status_code=503,
-            detail="Evaluation storage not available. BigQuery may not be configured.",
-        )
-
-    predictions_file = Path("TEST/predictions.csv")
-
-    if not predictions_file.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="No predictions file found. Run inference first.",
-        )
-
-    try:
-        df = pd.read_csv(predictions_file)
-        run_timestamp = datetime.fromtimestamp(predictions_file.stat().st_mtime)
-
-        rows_loaded = app.state.eval_storage.store_predictions(df, run_timestamp)
-
-        return {
-            "status": "success",
-            "message": "Predictions stored successfully",
-            "rows_loaded": rows_loaded,
-            "run_timestamp": run_timestamp.isoformat(),
-        }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to store predictions: {str(e)}",
         ) from e

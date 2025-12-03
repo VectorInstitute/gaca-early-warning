@@ -409,12 +409,19 @@ def batch_predict(  # noqa: PLR0912, PLR0915
 
         # Add buffer to ensure we have enough data for the first window
         data_start = start_dt - timedelta(hours=engine.config["num_hours_to_fetch"])
+
+        # IMPORTANT: Extend end date to include ground truth for all forecast horizons
+        # Example: if last prediction run is at T and max horizon is 48h,
+        # we need ground truth up to T+48h
+        max_forecast_horizon = max(engine.config["pred_offsets"])
+        data_end = end_dt + timedelta(hours=max_forecast_horizon)
+
         cache_file = output / "noaa_data_cache.parquet"
 
         try:
             full_data = fetch_historical_range(
                 start_date=data_start,
-                end_date=end_dt,
+                end_date=data_end,  # Extended to include forecast ground truth
                 lat_min=engine.config["region"]["lat_min"],
                 lat_max=engine.config["region"]["lat_max"],
                 lon_min=engine.config["region"]["lon_min"],

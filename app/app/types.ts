@@ -6,6 +6,7 @@ export interface Prediction {
   lat: number;
   lon: number;
   predicted_temp: number;
+  run_timestamp?: string; // Timestamp when the forecast was generated
 }
 
 export interface FeatureMetadata {

@@ -71,3 +71,4 @@ TEST/
 
 # predictions
 historical_predictions/
+forecasts/

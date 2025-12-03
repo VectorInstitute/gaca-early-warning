@@ -21,6 +21,7 @@ COPY . /app/
 
 # Install Python dependencies with aggressive cleanup
 RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r backend/requirements.txt && \
     pip install --no-cache-dir . && \
     # Remove unnecessary files to reduce image size
     find /usr/local/lib/python3.12/site-packages -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true && \
