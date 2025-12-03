@@ -17,6 +17,7 @@ dependencies = [
     "polars>=1.35.0",  # High-performance DataFrame library for data operations
     "pyarrow>=18.1.0",  # Required for Parquet support
     "matplotlib",
+    "fonttools>=4.60.2",  # Pinning version to address vulnerability GHSA-768j-98cg-p3fv
     "networkx",
     "geopy",
     "scikit-learn==1.7.1",
