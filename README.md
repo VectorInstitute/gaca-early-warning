@@ -1,5 +1,4 @@
 <div align="center">
-
 <img src="app/public/vector-logo.webp" alt="Vector Institute" width="200"/>
 
 # Global AI Alliance for Climate Action
