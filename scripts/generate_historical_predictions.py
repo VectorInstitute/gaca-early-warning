@@ -1,11 +1,24 @@
-"""Generate predictions for historical validation period and store to Firestore.
+"""Generate predictions for historical validation period and store to BigQuery.
 
-This script wraps the batch-predict CLI command and stores results to Firestore
+This script wraps the batch-predict CLI command and stores results to BigQuery
 for evaluation purposes.
 
+IMPORTANT: For accurate evaluation, use --interval 1 (hourly) to ensure unbiased
+temporal coverage across all times of day. Larger intervals (e.g., 24h) will cause
+each forecast horizon to be evaluated at only specific times, introducing diurnal
+bias and making metrics unreliable for cross-horizon comparison.
+
 Usage:
-    python scripts/generate_historical_predictions.py --help
-    python scripts/generate_historical_predictions.py --start-date "2024-02-06 12:00"
+    # Recommended: Hourly predictions for unbiased evaluation
+    python scripts/generate_historical_predictions.py \
+        --start-date "2024-02-06 12:00" \
+        --end-date "2024-07-19 17:00" \
+        --interval 1
+
+    # Faster but biased: Daily predictions (not recommended)
+    python scripts/generate_historical_predictions.py \
+        --start-date "2024-02-06 12:00" \
+        --interval 24
 """
 
 import argparse
@@ -169,8 +182,8 @@ def main() -> None:
     parser.add_argument(
         "--interval",
         type=int,
-        default=24,
-        help="Interval between predictions in hours",
+        default=1,
+        help="Interval between predictions in hours (default: 1 for continuous evaluation)",
     )
     parser.add_argument(
         "--output",

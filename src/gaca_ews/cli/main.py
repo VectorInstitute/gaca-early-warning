@@ -294,9 +294,9 @@ def batch_predict(  # noqa: PLR0912, PLR0915
         int,
         typer.Option(
             "--interval",
-            help="Interval between predictions in hours",
+            help="Interval between predictions in hours (use 1 for continuous evaluation)",
         ),
-    ] = 24,
+    ] = 1,
     output: Annotated[
         Path | None,
         typer.Option(
@@ -326,10 +326,15 @@ def batch_predict(  # noqa: PLR0912, PLR0915
     Generates predictions for multiple timestamps within a date range,
     useful for validation, evaluation, and backtesting.
 
+    IMPORTANT: For accurate evaluation, use --interval 1 (hourly predictions)
+    to ensure unbiased temporal coverage. Larger intervals (e.g., 24h) will
+    cause each forecast horizon to be evaluated at only specific times of day,
+    introducing diurnal bias and making cross-horizon comparisons invalid.
+
     Example:
         gaca-ews batch-predict --start-date "2024-02-06 12:00" \\
-            --end-date "2024-02-10 12:00"
-        gaca-ews batch-predict --start-date "2024-02-06 12:00" --interval 12
+            --end-date "2024-02-10 12:00" --interval 1
+        gaca-ews batch-predict --start-date "2024-02-06 12:00" --interval 6
     """
     try:
         # Set logger level

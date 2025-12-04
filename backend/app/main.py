@@ -359,6 +359,10 @@ async def get_static_evaluation() -> dict[str, Any]:
     dict[str, Any]
         Static evaluation metrics with RMSE/MAE by horizon
     """
+    logger = get_logger()
+    logger.info("=" * 80)
+    logger.info("GET /evaluation/static endpoint called")
+
     if not hasattr(app.state, "eval_storage"):
         raise HTTPException(
             status_code=503,
@@ -370,10 +374,19 @@ async def get_static_evaluation() -> dict[str, Any]:
         start_date = datetime(2024, 2, 6, 12, 0, 0)
         end_date = datetime(2024, 7, 19, 17, 0, 0)
 
+        logger.info(f"Static evaluation period: {start_date} to {end_date}")
+
         # Compute metrics using fast SQL aggregation in BigQuery (run in thread)
+        logger.info("Calling compute_metrics_for_period...")
         raw_metrics = await asyncio.to_thread(
             app.state.eval_storage.compute_metrics_for_period, start_date, end_date
         )
+
+        logger.info("Raw metrics from compute_metrics_for_period:")
+        logger.info(f"  overall_rmse: {raw_metrics['overall_rmse']:.4f}°C")
+        logger.info(f"  overall_mae: {raw_metrics['overall_mae']:.4f}°C")
+        logger.info(f"  total_samples: {raw_metrics['total_samples']:,}")
+        logger.info(f"  by_horizon keys: {list(raw_metrics['by_horizon'].keys())}")
 
         # Restructure metrics to match frontend expectations
         metrics = {
@@ -385,7 +398,12 @@ async def get_static_evaluation() -> dict[str, Any]:
             "by_horizon": raw_metrics["by_horizon"],
         }
 
+        logger.info("Restructured metrics for frontend:")
+        logger.info(f"  metrics['overall']: {metrics['overall']}")
+        logger.info(f"  metrics['by_horizon']: {metrics['by_horizon']}")
+
         if raw_metrics["total_samples"] == 0:
+            logger.warning("No samples found for static evaluation period")
             return {
                 "message": "No predictions found for static evaluation period",
                 "evaluation_period": {
@@ -396,6 +414,7 @@ async def get_static_evaluation() -> dict[str, Any]:
             }
 
         # Store computed metrics for caching (run in thread)
+        logger.info("Storing evaluation metrics to BigQuery...")
         await asyncio.to_thread(
             app.state.eval_storage.store_evaluation_metrics,
             evaluation_date=datetime.now(),
@@ -403,7 +422,7 @@ async def get_static_evaluation() -> dict[str, Any]:
             eval_type="static",
         )
 
-        return {
+        response = {
             "evaluation_period": {
                 "start": start_date.isoformat(),
                 "end": end_date.isoformat(),
@@ -412,7 +431,13 @@ async def get_static_evaluation() -> dict[str, Any]:
             "computed_at": datetime.now().isoformat(),
         }
 
+        logger.info("Static evaluation endpoint completed successfully")
+        logger.info("=" * 80)
+        return response
+
     except Exception as e:
+        logger.error(f"Failed to compute static evaluation: {str(e)}")
+        logger.info("=" * 80)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to compute static evaluation: {str(e)}",
@@ -480,6 +505,10 @@ async def get_dynamic_evaluation() -> dict[str, Any]:
     dict[str, Any]
         Dynamic evaluation metrics for last 30 days
     """
+    logger = get_logger()
+    logger.info("=" * 80)
+    logger.info("GET /evaluation/dynamic endpoint called")
+
     if not hasattr(app.state, "eval_storage"):
         raise HTTPException(
             status_code=503,
@@ -491,10 +520,19 @@ async def get_dynamic_evaluation() -> dict[str, Any]:
         end_date = datetime.now()
         start_date = end_date - timedelta(days=30)
 
+        logger.info(f"Evaluation period: {start_date} to {end_date} (30 days)")
+
         # Compute metrics using fast SQL aggregation in BigQuery (run in thread)
+        logger.info("Calling compute_metrics_for_period...")
         raw_metrics = await asyncio.to_thread(
             app.state.eval_storage.compute_metrics_for_period, start_date, end_date
         )
+
+        logger.info("Raw metrics from compute_metrics_for_period:")
+        logger.info(f"  overall_rmse: {raw_metrics['overall_rmse']:.4f}°C")
+        logger.info(f"  overall_mae: {raw_metrics['overall_mae']:.4f}°C")
+        logger.info(f"  total_samples: {raw_metrics['total_samples']:,}")
+        logger.info(f"  by_horizon keys: {list(raw_metrics['by_horizon'].keys())}")
 
         # Restructure metrics to match frontend expectations
         metrics = {
@@ -506,7 +544,12 @@ async def get_dynamic_evaluation() -> dict[str, Any]:
             "by_horizon": raw_metrics["by_horizon"],
         }
 
+        logger.info("Restructured metrics for frontend:")
+        logger.info(f"  metrics['overall']: {metrics['overall']}")
+        logger.info(f"  metrics['by_horizon']: {metrics['by_horizon']}")
+
         if raw_metrics["total_samples"] == 0:
+            logger.warning("No samples found for dynamic evaluation window")
             return {
                 "message": "No predictions found for dynamic evaluation window",
                 "evaluation_window": {
@@ -518,6 +561,7 @@ async def get_dynamic_evaluation() -> dict[str, Any]:
             }
 
         # Store computed metrics (run in thread)
+        logger.info("Storing evaluation metrics to BigQuery...")
         await asyncio.to_thread(
             app.state.eval_storage.store_evaluation_metrics,
             evaluation_date=datetime.now(),
@@ -525,7 +569,7 @@ async def get_dynamic_evaluation() -> dict[str, Any]:
             eval_type="dynamic",
         )
 
-        return {
+        response = {
             "evaluation_window": {
                 "start": start_date.isoformat(),
                 "end": end_date.isoformat(),
@@ -535,7 +579,13 @@ async def get_dynamic_evaluation() -> dict[str, Any]:
             "computed_at": datetime.now().isoformat(),
         }
 
+        logger.info("Evaluation endpoint completed successfully")
+        logger.info("=" * 80)
+        return response
+
     except Exception as e:
+        logger.error(f"Failed to compute dynamic evaluation: {str(e)}")
+        logger.info("=" * 80)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to compute dynamic evaluation: {str(e)}",
