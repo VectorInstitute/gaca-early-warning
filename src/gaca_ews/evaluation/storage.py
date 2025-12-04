@@ -263,8 +263,18 @@ class EvaluationStorage:
         console.print(
             f"[cyan]Computing metrics for {start_date} to {end_date}...[/cyan]"
         )
+        console.print("[yellow]DEBUG: Query parameters:[/yellow]")
+        console.print(f"  start_date: {start_date}")
+        console.print(f"  end_date: {end_date}")
+        console.print(f"  project: {self.project_id}")
+        console.print(f"  dataset: {self.dataset_id}")
+
         query_job = self.client.query(query, job_config=job_config)
         results = query_job.result()
+
+        console.print(
+            "[yellow]DEBUG: BigQuery job completed, parsing results...[/yellow]"
+        )
 
         # Parse results
         by_horizon = {}
@@ -278,6 +288,11 @@ class EvaluationStorage:
             mae = float(row["mae"])
             count = int(row["sample_count"])
 
+            console.print(
+                f"[yellow]DEBUG: Horizon {horizon}h - "
+                f"RMSE={rmse:.4f}°C, MAE={mae:.4f}°C, samples={count:,}[/yellow]"
+            )
+
             by_horizon[horizon] = {
                 "rmse": rmse,
                 "mae": mae,
@@ -289,7 +304,15 @@ class EvaluationStorage:
             sum_squared_errors += (rmse**2) * count
             sum_abs_errors += mae * count
 
+            console.print(
+                f"[yellow]DEBUG: Accumulating - "
+                f"total_samples={total_samples:,}, "
+                f"sum_squared_errors={sum_squared_errors:.4f}, "
+                f"sum_abs_errors={sum_abs_errors:.4f}[/yellow]"
+            )
+
         if total_samples == 0:
+            console.print("[red]DEBUG: No samples found, returning zeros[/red]")
             return {
                 "overall_rmse": 0.0,
                 "overall_mae": 0.0,
@@ -299,6 +322,14 @@ class EvaluationStorage:
 
         overall_rmse = (sum_squared_errors / total_samples) ** 0.5
         overall_mae = sum_abs_errors / total_samples
+
+        console.print("[yellow]DEBUG: Overall computation:[/yellow]")
+        console.print(
+            f"  Overall RMSE = sqrt({sum_squared_errors:.4f} / {total_samples:,}) = {overall_rmse:.4f}°C"
+        )
+        console.print(
+            f"  Overall MAE = {sum_abs_errors:.4f} / {total_samples:,} = {overall_mae:.4f}°C"
+        )
 
         console.print(
             f"[green]✓[/green] Computed metrics over {total_samples:,} samples "
