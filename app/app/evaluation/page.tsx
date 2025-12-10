@@ -6,6 +6,8 @@ import { TrendingUp, AlertCircle, Calendar, Activity } from "lucide-react";
 import {
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -54,6 +56,19 @@ interface ChartDataPoint {
   horizon: number;
   RMSE: number;
   MAE: number;
+}
+
+interface MonthlyMetrics {
+  overall_rmse: number;
+  overall_mae: number;
+  samples: number;
+  by_horizon: Record<string, HorizonMetrics>;
+}
+
+interface MonthlyAnalysis {
+  evaluation_period: { start: string; end: string };
+  monthly_metrics: Record<string, MonthlyMetrics>;
+  computed_at: string;
 }
 
 // ============================================================================
@@ -202,10 +217,13 @@ const WarningMessage = ({ message }: { message: string }) => (
 export default function EvaluationPage() {
   const [staticEval, setStaticEval] = useState<StaticEvaluation | null>(null);
   const [dynamicEval, setDynamicEval] = useState<DynamicEvaluation | null>(null);
+  const [monthlyAnalysis, setMonthlyAnalysis] = useState<MonthlyAnalysis | null>(null);
   const [loadingStatic, setLoadingStatic] = useState(true);
   const [loadingDynamic, setLoadingDynamic] = useState(true);
+  const [loadingMonthly, setLoadingMonthly] = useState(true);
   const [errorStatic, setErrorStatic] = useState<string | null>(null);
   const [errorDynamic, setErrorDynamic] = useState<string | null>(null);
+  const [errorMonthly, setErrorMonthly] = useState<string | null>(null);
   const hasFetched = useRef(false);
 
   useEffect(() => {
@@ -240,8 +258,23 @@ export default function EvaluationPage() {
       }
     };
 
+    const fetchMonthlyAnalysis = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/evaluation/static/monthly`);
+        if (!response.ok) throw new Error("Failed to fetch monthly analysis");
+        const data = await response.json();
+        setMonthlyAnalysis(data);
+        setErrorMonthly(null);
+      } catch (error) {
+        setErrorMonthly(error instanceof Error ? error.message : "Unknown error");
+      } finally {
+        setLoadingMonthly(false);
+      }
+    };
+
     fetchStaticEvaluation();
     fetchDynamicEvaluation();
+    fetchMonthlyAnalysis();
   }, []);
 
   const formatDate = (dateStr: string) => {
@@ -337,8 +370,196 @@ export default function EvaluationPage() {
             data={prepareChartData(staticEval.metrics.by_horizon)}
             title="Error vs Forecast Horizon"
           />
+
+          {/* Monthly Error Analysis */}
+          {renderMonthlyAnalysis()}
         </motion.div>
       </AnimatePresence>
+    );
+  };
+
+  const renderMonthlyAnalysis = () => {
+    if (loadingMonthly) {
+      return (
+        <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-6 mt-6">
+          <div className="h-5 w-48 bg-slate-700/50 rounded animate-pulse mb-6" />
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-12 bg-slate-700/30 rounded animate-pulse" />
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (errorMonthly) {
+      return (
+        <div className="mt-6">
+          <ErrorMessage message={errorMonthly} />
+        </div>
+      );
+    }
+
+    if (!monthlyAnalysis) return null;
+
+    // Sort months by overall RMSE to identify best and worst
+    const sortedMonths = Object.entries(monthlyAnalysis.monthly_metrics)
+      .map(([month, metrics]) => ({
+        month,
+        rmse: metrics.overall_rmse,
+        mae: metrics.overall_mae,
+        samples: metrics.samples,
+      }))
+      .sort((a, b) => b.rmse - a.rmse); // Highest error first
+
+    const worstMonth = sortedMonths[0];
+    const bestMonth = sortedMonths[sortedMonths.length - 1];
+
+    // Format month for display
+    const formatMonth = (monthStr: string) => {
+      // monthStr is in format "YYYY-MM"
+      // Parse directly to avoid timezone issues
+      const [year, month] = monthStr.split("-");
+      const date = new Date(parseInt(year), parseInt(month) - 1, 1);
+      return date.toLocaleDateString("en-US", { year: "numeric", month: "long" });
+    };
+
+    // Prepare chart data (sorted chronologically by month key)
+    const chartData = Object.entries(monthlyAnalysis.monthly_metrics)
+      .sort(([a], [b]) => a.localeCompare(b)) // Sort by YYYY-MM string
+      .map(([month, metrics]) => ({
+        month: formatMonth(month).split(" ")[0], // Short month name
+        fullMonth: formatMonth(month),
+        RMSE: parseFloat(metrics.overall_rmse.toFixed(2)),
+        MAE: parseFloat(metrics.overall_mae.toFixed(2)),
+      }));
+
+    // Calculate improvement percentage
+    const improvementPercent = (
+      ((worstMonth.rmse - bestMonth.rmse) / worstMonth.rmse) *
+      100
+    ).toFixed(1);
+
+    // Determine season text based on actual months
+    const getSeasonText = () => {
+      const months = Object.keys(monthlyAnalysis.monthly_metrics).sort();
+      const firstMonth = parseInt(months[0].split("-")[1]); // Get month number
+
+      if (firstMonth <= 2) return "Winter → Summer";
+      if (firstMonth <= 5) return "Spring → Summer";
+      return "Seasonal Variation";
+    };
+
+    return (
+      <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-6 mt-6 hover:border-amber-500/50 transition-all">
+        <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
+          <Calendar className="w-5 h-5 text-amber-400" />
+          Monthly Error Analysis
+        </h3>
+
+        {/* Best and Worst Months Highlight */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-4">
+            <div className="text-xs text-red-400 font-semibold uppercase tracking-wide mb-2">
+              Highest Error
+            </div>
+            <div className="text-2xl font-bold text-white mb-1">
+              {formatMonth(worstMonth.month)}
+            </div>
+            <div className="text-sm text-slate-300">
+              {worstMonth.rmse.toFixed(2)}°C RMSE
+            </div>
+          </div>
+
+          <div className="bg-green-900/20 border border-green-700/50 rounded-lg p-4">
+            <div className="text-xs text-green-400 font-semibold uppercase tracking-wide mb-2">
+              Lowest Error
+            </div>
+            <div className="text-2xl font-bold text-white mb-1">
+              {formatMonth(bestMonth.month)}
+            </div>
+            <div className="text-sm text-slate-300">
+              {bestMonth.rmse.toFixed(2)}°C RMSE
+            </div>
+          </div>
+
+          <div className="bg-amber-900/20 border border-amber-700/50 rounded-lg p-4">
+            <div className="text-xs text-amber-400 font-semibold uppercase tracking-wide mb-2">
+              Trend
+            </div>
+            <div className="text-2xl font-bold text-white mb-1">
+              ↓ {improvementPercent}%
+            </div>
+            <div className="text-sm text-slate-300">{getSeasonText()}</div>
+          </div>
+        </div>
+
+        {/* Simplified Line Chart */}
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart
+            data={chartData}
+            margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
+            <XAxis
+              dataKey="month"
+              stroke="#94a3b8"
+              tick={{ fill: "#94a3b8", fontSize: 13 }}
+              tickLine={{ stroke: "#94a3b8" }}
+            />
+            <YAxis
+              stroke="#94a3b8"
+              label={{
+                value: "Temperature Error (°C)",
+                angle: -90,
+                position: "insideLeft",
+                fill: "#94a3b8",
+                style: { fontSize: 13 },
+              }}
+              tick={{ fill: "#94a3b8", fontSize: 12 }}
+              domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.15)]}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "#1e293b",
+                border: "1px solid #475569",
+                borderRadius: "8px",
+                color: "#fff",
+                padding: "12px",
+              }}
+              formatter={(value: number) => [`${value.toFixed(2)}°C`, ""]}
+              labelFormatter={(label) => {
+                const data = chartData.find((d) => d.month === label);
+                return data?.fullMonth || label;
+              }}
+            />
+            <Legend wrapperStyle={{ paddingTop: "20px" }} iconType="line" />
+            <Line
+              type="monotone"
+              dataKey="RMSE"
+              stroke="#EB088A"
+              strokeWidth={3}
+              dot={{ fill: "#EB088A", r: 6 }}
+              activeDot={{ r: 8 }}
+              name="RMSE"
+            />
+            <Line
+              type="monotone"
+              dataKey="MAE"
+              stroke="#313CFF"
+              strokeWidth={3}
+              dot={{ fill: "#313CFF", r: 6 }}
+              activeDot={{ r: 8 }}
+              name="MAE"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+
+        <div className="mt-6 text-xs text-slate-400 text-center">
+          Error metrics decrease from late winter through summer, reflecting more stable
+          atmospheric patterns and improved predictability in warmer months
+        </div>
+      </div>
     );
   };
 

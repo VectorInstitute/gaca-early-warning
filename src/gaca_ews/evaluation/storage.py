@@ -615,6 +615,120 @@ class EvaluationStorage:
 
         return results[0]["last_run"].isoformat()
 
+    def compute_monthly_metrics(
+        self, start_date: datetime, end_date: datetime
+    ) -> dict[str, Any]:
+        """Compute error metrics grouped by month for error analysis.
+
+        Parameters
+        ----------
+        start_date : datetime
+            Start of the range (inclusive)
+        end_date : datetime
+            End of the range (inclusive)
+
+        Returns
+        -------
+        dict[str, Any]
+            Monthly metrics with overall and per-horizon breakdowns
+        """
+        query = f"""
+        WITH matched AS (
+            SELECT
+                p.forecast_time,
+                p.horizon_hours,
+                p.predicted_temp,
+                g.actual_temp
+            FROM `{self.project_id}.{self.dataset_id}.predictions` p
+            JOIN `{self.project_id}.{self.dataset_id}.ground_truth` g
+                ON p.forecast_time = g.timestamp
+                AND ROUND(p.lat, 2) = ROUND(g.lat, 2)
+                AND ROUND(p.lon, 2) = ROUND(g.lon, 2)
+            WHERE p.run_timestamp BETWEEN @start_date AND @end_date
+        ),
+        monthly AS (
+            SELECT
+                FORMAT_TIMESTAMP('%Y-%m', forecast_time) AS month,
+                horizon_hours,
+                predicted_temp,
+                actual_temp
+            FROM matched
+            WHERE forecast_time >= @start_date
+              AND forecast_time <= @end_date
+        )
+        SELECT
+            month,
+            horizon_hours,
+            SQRT(AVG(POW(predicted_temp - actual_temp, 2))) AS rmse,
+            AVG(ABS(predicted_temp - actual_temp)) AS mae,
+            COUNT(*) AS sample_count
+        FROM monthly
+        GROUP BY month, horizon_hours
+        ORDER BY month, horizon_hours
+        """
+
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("start_date", "TIMESTAMP", start_date),
+                bigquery.ScalarQueryParameter("end_date", "TIMESTAMP", end_date),
+            ]
+        )
+
+        console.print(
+            f"[cyan]Computing monthly metrics for {start_date} to {end_date}...[/cyan]"
+        )
+
+        query_job = self.client.query(query, job_config=job_config)
+        results = query_job.result()
+
+        # Parse results into nested structure
+        by_month: dict[str, dict[str, Any]] = {}
+
+        for row in results:
+            month = str(row["month"])
+            horizon = int(row["horizon_hours"])
+            rmse = float(row["rmse"])
+            mae = float(row["mae"])
+            count = int(row["sample_count"])
+
+            if month not in by_month:
+                by_month[month] = {"by_horizon": {}, "samples": 0}
+
+            by_month[month]["by_horizon"][horizon] = {
+                "rmse": rmse,
+                "mae": mae,
+                "sample_count": count,
+            }
+            by_month[month]["samples"] += count
+
+        # Compute overall metrics per month (across all horizons)
+        for _month, month_data in by_month.items():
+            total_samples = 0
+            sum_squared_errors = 0.0
+            sum_abs_errors = 0.0
+
+            for horizon_data in month_data["by_horizon"].values():
+                count = horizon_data["sample_count"]
+                rmse = horizon_data["rmse"]
+                mae = horizon_data["mae"]
+
+                total_samples += count
+                sum_squared_errors += (rmse**2) * count
+                sum_abs_errors += mae * count
+
+            if total_samples > 0:
+                month_data["overall_rmse"] = (sum_squared_errors / total_samples) ** 0.5
+                month_data["overall_mae"] = sum_abs_errors / total_samples
+            else:
+                month_data["overall_rmse"] = 0.0
+                month_data["overall_mae"] = 0.0
+
+        console.print(
+            f"[green]✓[/green] Computed monthly metrics for {len(by_month)} months"
+        )
+
+        return {"by_month": by_month}
+
     def get_last_forecast_run_info(self) -> dict[str, Any] | None:
         """Get information about the last forecast run.
 

@@ -241,8 +241,8 @@ def main() -> None:
     parser.add_argument(
         "--interval",
         type=int,
-        default=24,
-        help="Interval between predictions in hours (default: 24)",
+        default=1,
+        help="Interval between predictions in hours (default: 1 for unbiased evaluation)",
     )
     parser.add_argument(
         "--output",
@@ -284,6 +284,21 @@ def main() -> None:
         "\n[dim]Note: Ground truth will be fetched up to end_date + max_forecast_horizon "
         "(+48h)[/dim]\n"
     )
+
+    # Warn about temporal bias
+    if args.interval > 1:
+        console.print(
+            f"[bold yellow]⚠ WARNING: Using interval={args.interval}h may introduce temporal bias![/bold yellow]"
+        )
+        console.print(
+            "[yellow]  Each forecast horizon will be evaluated at only specific times of day,[/yellow]"
+        )
+        console.print(
+            "[yellow]  causing diurnal effects to bias error metrics (e.g., 48h < 36h errors).[/yellow]"
+        )
+        console.print(
+            "[yellow]  For unbiased evaluation, use --interval 1 (hourly predictions).[/yellow]\n"
+        )
 
     # Step 1: Run batch predictions (unless skipped)
     if not args.skip_inference:
