@@ -569,6 +569,64 @@ async def get_forecast_logs(limit: int = 100) -> dict[str, Any]:
         ) from e
 
 
+@app.get("/evaluation/static/monthly")
+async def get_static_monthly_analysis() -> dict[str, Any]:
+    """Get monthly error analysis for static evaluation period.
+
+    Provides breakdown of RMSE/MAE by month to identify seasonal patterns
+    and months with highest/lowest errors.
+
+    Returns
+    -------
+    dict[str, Any]
+        Monthly metrics with per-horizon breakdowns
+    """
+    logger = get_logger()
+    logger.info("=" * 80)
+    logger.info("GET /evaluation/static/monthly endpoint called")
+
+    if not hasattr(app.state, "eval_storage"):
+        raise HTTPException(
+            status_code=503,
+            detail="Evaluation storage not available. BigQuery may not be configured.",
+        )
+
+    try:
+        # Use same static evaluation period as main endpoint
+        start_date = datetime(2024, 2, 6, 12, 0, 0)
+        end_date = datetime(2024, 7, 19, 17, 0, 0)
+
+        logger.info(f"Computing monthly metrics for: {start_date} to {end_date}")
+
+        # Compute monthly metrics using SQL aggregation in BigQuery
+        monthly_data = await asyncio.to_thread(
+            app.state.eval_storage.compute_monthly_metrics, start_date, end_date
+        )
+
+        logger.info(f"Monthly data computed for {len(monthly_data['by_month'])} months")
+
+        response = {
+            "evaluation_period": {
+                "start": start_date.isoformat(),
+                "end": end_date.isoformat(),
+            },
+            "monthly_metrics": monthly_data["by_month"],
+            "computed_at": datetime.now().isoformat(),
+        }
+
+        logger.info("Monthly analysis endpoint completed successfully")
+        logger.info("=" * 80)
+        return response
+
+    except Exception as e:
+        logger.error(f"Failed to compute monthly analysis: {str(e)}")
+        logger.info("=" * 80)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to compute monthly analysis: {str(e)}",
+        ) from e
+
+
 @app.get("/evaluation/dynamic")
 async def get_dynamic_evaluation() -> dict[str, Any]:
     """Get dynamic evaluation metrics (rolling 1-month window).
