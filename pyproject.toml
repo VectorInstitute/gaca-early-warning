@@ -18,6 +18,7 @@ dependencies = [
     "pyarrow>=18.1.0",  # Required for Parquet support
     "matplotlib",
     "fonttools>=4.60.2",  # Pinning version to address vulnerability GHSA-768j-98cg-p3fv
+    "urllib3>=2.6.0",  # Pinning version to address vulnerabilities GHSA-gm62-xv2j-4w53 and GHSA-2xpw-w6gg-jr37
     "networkx",
     "geopy",
     "scikit-learn==1.7.1",
