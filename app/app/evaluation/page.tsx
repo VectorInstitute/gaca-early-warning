@@ -444,7 +444,6 @@ export default function EvaluationPage() {
     const getSeasonText = () => {
       const months = Object.keys(monthlyAnalysis.monthly_metrics).sort();
       const firstMonth = parseInt(months[0].split("-")[1]); // Get month number
-      const lastMonth = parseInt(months[months.length - 1].split("-")[1]);
 
       if (firstMonth <= 2) return "Winter → Summer";
       if (firstMonth <= 5) return "Spring → Summer";
