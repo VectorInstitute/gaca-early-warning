@@ -52,6 +52,7 @@ packages = ["src/gaca_ews"]
 [dependency-groups]
 dev = [
     "codecov>=2.1.13",
+    "filelock>=3.20.1", # Pinning version to address vulnerability GHSA-w853-jp5j-5j7f
     "mypy>=1.14.1",
     "nbqa>=1.9.1",
     "pip>=25.2", # Pinning version to address vulnerability GHSA-4xh5-x5gv-qwph
