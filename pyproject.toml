@@ -13,12 +13,12 @@ dependencies = [
     "botocore",
     "pygrib",
     "numpy",
-    "pandas",  # Required for BigQuery client compatibility (load_table_from_dataframe)
-    "polars>=1.35.0",  # High-performance DataFrame library for data operations
-    "pyarrow>=18.1.0",  # Required for Parquet support
+    "pandas", # Required for BigQuery client compatibility (load_table_from_dataframe)
+    "polars>=1.35.0", # High-performance DataFrame library for data operations
+    "pyarrow>=18.1.0", # Required for Parquet support
     "matplotlib",
-    "fonttools>=4.60.2",  # Pinning version to address vulnerability GHSA-768j-98cg-p3fv
-    "urllib3>=2.6.0",  # Pinning version to address vulnerabilities GHSA-gm62-xv2j-4w53 and GHSA-2xpw-w6gg-jr37
+    "fonttools>=4.60.2", # Pinning version to address vulnerability GHSA-768j-98cg-p3fv
+    "urllib3>=2.6.3", # Pinning version to address vulnerabilities GHSA-gm62-xv2j-4w53 and GHSA-2xpw-w6gg-jr37
     "networkx",
     "geopy",
     "scikit-learn==1.7.1",
@@ -37,6 +37,11 @@ dependencies = [
     "google-cloud-bigquery-storage>=2.26.0",
     "db-dtypes>=1.4.4",
     "pandas-gbq>=0.31.0",
+    "aiohttp>=3.13.3",
+    "authlib>=1.6.6",
+    "filelock>=3.20.3",
+    "pyasn1>=0.6.2",
+    "virtualenv>=20.36.1",
 ]
 
 [project.scripts]
