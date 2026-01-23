@@ -14,6 +14,7 @@ import pandas as pd
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from gaca_ews.core.data_extraction import fetch_historical_hours
 from gaca_ews.core.inference import InferenceEngine
 from gaca_ews.core.logger import get_logger
 from gaca_ews.evaluation.storage import EvaluationStorage
@@ -333,4 +334,208 @@ class EvaluationScheduler:
                 self.last_eval_date.isoformat() if self.last_eval_date else None
             ),
             "next_scheduled_run": next_run,
+        }
+
+
+class GroundTruthScheduler:
+    """Manages automated ground truth data collection for evaluation.
+
+    This scheduler fetches actual observed temperatures from NOAA for
+    forecast times that have already passed, enabling evaluation of
+    prediction accuracy.
+    """
+
+    # Region boundaries (must match trained model)
+    LAT_MIN = 42.0
+    LAT_MAX = 45.0
+    LON_MIN = -81.0
+    LON_MAX = -78.0
+
+    def __init__(
+        self,
+        storage: EvaluationStorage,
+        lookback_hours: int = 72,
+    ) -> None:
+        """Initialize the ground truth scheduler.
+
+        Parameters
+        ----------
+        storage : EvaluationStorage
+            BigQuery storage client for storing ground truth
+        lookback_hours : int
+            How far back to look for missing ground truth (default: 72 hours)
+        """
+        self.storage = storage
+        self.lookback_hours = lookback_hours
+        self.scheduler = AsyncIOScheduler(timezone="UTC")
+        self.last_run_timestamp: datetime | None = None
+        self.is_running = False
+        self.timestamps_processed = 0
+
+        logger.info("GroundTruthScheduler initialized")
+
+    def start(self) -> None:
+        """Start the scheduler with hourly ground truth collection.
+
+        Runs every hour at :45 past the hour, after forecasts have run
+        and NOAA data for past hours is available.
+        """
+        # Run every hour at :45 past the hour
+        self.scheduler.add_job(
+            self._run_ground_truth_job,
+            trigger=CronTrigger(minute=45, timezone="UTC"),
+            id="hourly_ground_truth",
+            name="Hourly Ground Truth Collection",
+            replace_existing=True,
+            max_instances=1,  # Prevent overlapping runs
+        )
+
+        self.scheduler.start()
+        logger.info("Ground truth scheduler started - will run hourly at :45")
+
+    def stop(self) -> None:
+        """Stop the scheduler."""
+        if self.scheduler.running:
+            self.scheduler.shutdown(wait=True)
+            logger.info("Ground truth scheduler stopped")
+
+    async def _run_ground_truth_job(self) -> None:
+        """Execute ground truth collection for missing timestamps."""
+        if self.is_running:
+            logger.warning("Ground truth job already running, skipping...")
+            return
+
+        self.is_running = True
+        job_start = datetime.utcnow()
+        timestamps_filled = 0
+
+        try:
+            logger.info("=" * 80)
+            logger.info(f"Starting ground truth collection at {job_start.isoformat()}")
+            logger.info("=" * 80)
+
+            # Get forecast times that need ground truth
+            logger.info("Checking for forecast times needing ground truth...")
+            missing_timestamps = await asyncio.to_thread(
+                self.storage.get_forecast_times_needing_ground_truth,
+                self.lookback_hours,
+            )
+
+            if not missing_timestamps:
+                logger.info("No missing ground truth - all forecast times covered")
+                return
+
+            logger.info(
+                f"Found {len(missing_timestamps)} timestamps needing ground truth"
+            )
+
+            # Fetch and store ground truth for each missing timestamp
+            for ts in missing_timestamps:
+                try:
+                    logger.info(f"Fetching ground truth for {ts.isoformat()}...")
+
+                    # Fetch NOAA data for this specific hour
+                    # We only need 1 hour of data for the specific timestamp
+                    data = await asyncio.to_thread(
+                        fetch_historical_hours,
+                        target_datetime=ts,
+                        hours_back=1,
+                        lat_min=self.LAT_MIN,
+                        lat_max=self.LAT_MAX,
+                        lon_min=self.LON_MIN,
+                        lon_max=self.LON_MAX,
+                    )
+
+                    if data is None or data.empty:
+                        logger.warning(f"No NOAA data available for {ts.isoformat()}")
+                        continue
+
+                    # Extract ground truth (t2m in Celsius)
+                    # The data has 'datetime' column from fetch_historical_hours
+                    ground_truth_df = data[["datetime", "lat", "lon", "t2m"]].copy()
+                    ground_truth_df = ground_truth_df.rename(
+                        columns={"datetime": "timestamp", "t2m": "actual_temp"}
+                    )
+
+                    # Convert from Kelvin to Celsius
+                    ground_truth_df["actual_temp"] = (
+                        ground_truth_df["actual_temp"] - 273.15
+                    )
+
+                    # Store to BigQuery
+                    rows_loaded = await asyncio.to_thread(
+                        self.storage.store_ground_truth, ground_truth_df
+                    )
+
+                    logger.info(
+                        f"Stored {rows_loaded} ground truth records for {ts.isoformat()}"
+                    )
+                    timestamps_filled += 1
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to fetch ground truth for {ts.isoformat()}: {e}"
+                    )
+                    continue
+
+            self.last_run_timestamp = job_start
+            self.timestamps_processed += timestamps_filled
+
+            job_duration = (datetime.utcnow() - job_start).total_seconds()
+            logger.info("=" * 80)
+            logger.info(
+                f"Ground truth job completed in {job_duration:.1f}s "
+                f"({timestamps_filled} timestamps filled)"
+            )
+            logger.info("=" * 80)
+
+        except Exception as e:
+            logger.error(f"Ground truth job failed: {e}", exc_info=True)
+            raise
+        finally:
+            self.is_running = False
+
+    async def run_immediate(self) -> dict[str, Any]:
+        """Run ground truth collection immediately (for manual trigger).
+
+        Returns
+        -------
+        dict[str, Any]
+            Results of the collection run
+        """
+        if self.is_running:
+            return {"status": "error", "message": "Job already running"}
+
+        await self._run_ground_truth_job()
+
+        return {
+            "status": "success",
+            "timestamps_processed": self.timestamps_processed,
+            "last_run": (
+                self.last_run_timestamp.isoformat() if self.last_run_timestamp else None
+            ),
+        }
+
+    def get_status(self) -> dict[str, Any]:
+        """Get current scheduler status.
+
+        Returns
+        -------
+        dict[str, Any]
+            Status information including last run and coverage stats
+        """
+        next_run = None
+        job = self.scheduler.get_job("hourly_ground_truth")
+        if job and job.next_run_time:
+            next_run = job.next_run_time.isoformat()
+
+        return {
+            "is_running": self.is_running,
+            "scheduler_active": self.scheduler.running,
+            "last_run_timestamp": (
+                self.last_run_timestamp.isoformat() if self.last_run_timestamp else None
+            ),
+            "timestamps_processed_total": self.timestamps_processed,
+            "next_scheduled_run": next_run,
+            "lookback_hours": self.lookback_hours,
         }
