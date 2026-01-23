@@ -16,7 +16,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from backend.app.scheduler import EvaluationScheduler, ForecastScheduler
+from backend.app.scheduler import (
+    EvaluationScheduler,
+    ForecastScheduler,
+    GroundTruthScheduler,
+)
 from gaca_ews.core.inference import InferenceEngine
 from gaca_ews.core.logger import get_logger
 from gaca_ews.evaluation.storage import EvaluationStorage
@@ -135,11 +139,24 @@ async def startup_event() -> None:
             logger.info(
                 "Background evaluation scheduler started (runs daily at 00:30 UTC)"
             )
+
+            app.state.ground_truth_scheduler = GroundTruthScheduler(
+                storage=app.state.eval_storage
+            )
+            app.state.ground_truth_scheduler.start()
+            logger.info(
+                "Background ground truth scheduler started (runs hourly at :45)"
+            )
     else:
         logger.info("Background schedulers DISABLED (Cloud Scheduler mode)")
         logger.info("Forecasts triggered via: POST /scheduler/trigger-forecast")
-        logger.info(
-            "Evaluations triggered via: POST /scheduler/trigger-evaluation (TODO)"
+        logger.info("Ground truth triggered via: POST /scheduler/trigger-ground-truth")
+        logger.info("Evaluations triggered via: POST /scheduler/trigger-evaluation")
+
+    # Always initialize ground truth scheduler for manual triggering
+    if app.state.eval_storage and not enable_background_scheduler:
+        app.state.ground_truth_scheduler = GroundTruthScheduler(
+            storage=app.state.eval_storage
         )
 
     logger.info("=" * 80)
@@ -166,6 +183,13 @@ async def shutdown_event() -> None:
     ):
         app.state.eval_scheduler.stop()
         logger.info("Evaluation scheduler stopped")
+
+    if (
+        hasattr(app.state, "ground_truth_scheduler")
+        and app.state.ground_truth_scheduler.scheduler.running
+    ):
+        app.state.ground_truth_scheduler.stop()
+        logger.info("Ground truth scheduler stopped")
 
     logger.info("Shutdown complete")
 
@@ -517,6 +541,90 @@ async def trigger_forecast() -> dict[str, Any]:
             status_code=500,
             detail=f"Forecast execution failed: {str(e)}",
         ) from e
+
+
+@app.post("/scheduler/trigger-ground-truth")
+async def trigger_ground_truth() -> dict[str, Any]:
+    """Manually trigger ground truth collection via HTTP.
+
+    This endpoint is designed to be called by Cloud Scheduler to collect
+    actual observed temperatures for past forecast times, enabling
+    evaluation of prediction accuracy.
+
+    Returns
+    -------
+    dict[str, Any]
+        Status of the ground truth collection including timestamps processed
+    """
+    if not hasattr(app.state, "ground_truth_scheduler"):
+        raise HTTPException(
+            status_code=503, detail="Ground truth scheduler not initialized"
+        )
+
+    logger = get_logger()
+
+    # Check if already running
+    if app.state.ground_truth_scheduler.is_running:
+        logger.warning("Ground truth job already running, rejecting duplicate request")
+        return {
+            "status": "already_running",
+            "message": "A ground truth job is already in progress",
+        }
+
+    try:
+        # Run the ground truth job directly
+        await app.state.ground_truth_scheduler._run_ground_truth_job()
+
+        return {
+            "status": "success",
+            "message": "Ground truth collection completed",
+            "last_run_timestamp": (
+                app.state.ground_truth_scheduler.last_run_timestamp.isoformat()
+                if app.state.ground_truth_scheduler.last_run_timestamp
+                else None
+            ),
+            "timestamps_processed": (
+                app.state.ground_truth_scheduler.timestamps_processed
+            ),
+        }
+
+    except Exception as e:
+        logger.error(f"Triggered ground truth collection failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ground truth collection failed: {str(e)}",
+        ) from e
+
+
+@app.get("/scheduler/ground-truth-status")
+async def get_ground_truth_status() -> dict[str, Any]:
+    """Get the status of ground truth scheduler and coverage.
+
+    Returns
+    -------
+    dict[str, Any]
+        Scheduler status and ground truth coverage statistics
+    """
+    if not hasattr(app.state, "ground_truth_scheduler"):
+        raise HTTPException(
+            status_code=503, detail="Ground truth scheduler not initialized"
+        )
+
+    if not hasattr(app.state, "eval_storage") or app.state.eval_storage is None:
+        raise HTTPException(status_code=503, detail="BigQuery storage not available")
+
+    scheduler_status = app.state.ground_truth_scheduler.get_status()
+
+    # Get coverage statistics
+    try:
+        coverage = app.state.eval_storage.get_ground_truth_coverage()
+    except Exception as e:
+        coverage = {"error": str(e)}
+
+    return {
+        "scheduler": scheduler_status,
+        "coverage": coverage,
+    }
 
 
 @app.get("/logs/forecast-runs")

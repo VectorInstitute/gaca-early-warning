@@ -764,3 +764,127 @@ class EvaluationStorage:
             "latest_forecast": row["latest_forecast"].isoformat(),
             "prediction_count": int(row["prediction_count"]),
         }
+
+    def get_forecast_times_needing_ground_truth(
+        self, lookback_hours: int = 72
+    ) -> list[datetime]:
+        """Get distinct forecast_times from predictions that need ground truth.
+
+        Finds forecast_times that:
+        1. Are in the past (already occurred)
+        2. Don't have matching ground truth data
+        3. Are within the lookback window
+
+        Parameters
+        ----------
+        lookback_hours : int
+            How far back to look for missing ground truth (default: 72 hours)
+
+        Returns
+        -------
+        list[datetime]
+            List of forecast_times that need ground truth data
+        """
+        query = f"""
+        WITH past_forecasts AS (
+            SELECT DISTINCT forecast_time
+            FROM `{self.project_id}.{self.dataset_id}.predictions`
+            WHERE forecast_time < CURRENT_TIMESTAMP()
+              AND forecast_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {lookback_hours} HOUR)
+        ),
+        existing_ground_truth AS (
+            SELECT DISTINCT timestamp
+            FROM `{self.project_id}.{self.dataset_id}.ground_truth`
+            WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {lookback_hours} HOUR)
+        )
+        SELECT pf.forecast_time
+        FROM past_forecasts pf
+        LEFT JOIN existing_ground_truth egt
+            ON pf.forecast_time = egt.timestamp
+        WHERE egt.timestamp IS NULL
+        ORDER BY pf.forecast_time
+        """
+
+        console.print(
+            f"[cyan]Checking for forecast times needing ground truth "
+            f"(last {lookback_hours}h)...[/cyan]"
+        )
+
+        query_job = self.client.query(query)
+        results = list(query_job.result())
+
+        timestamps = [row["forecast_time"] for row in results]
+
+        if timestamps:
+            console.print(
+                f"[yellow]Found {len(timestamps)} forecast times needing ground truth[/yellow]"
+            )
+        else:
+            console.print("[green]✓[/green] All forecast times have ground truth")
+
+        return timestamps
+
+    def get_ground_truth_coverage(self) -> dict[str, Any]:
+        """Get statistics about ground truth coverage for predictions.
+
+        Returns
+        -------
+        dict[str, Any]
+            Coverage statistics including total predictions, matched, and missing
+        """
+        query = f"""
+        WITH prediction_times AS (
+            SELECT
+                COUNT(DISTINCT forecast_time) as total_forecast_times,
+                MIN(forecast_time) as earliest,
+                MAX(forecast_time) as latest
+            FROM `{self.project_id}.{self.dataset_id}.predictions`
+            WHERE forecast_time < CURRENT_TIMESTAMP()
+        ),
+        ground_truth_times AS (
+            SELECT COUNT(DISTINCT timestamp) as total_ground_truth
+            FROM `{self.project_id}.{self.dataset_id}.ground_truth`
+        ),
+        matched AS (
+            SELECT COUNT(DISTINCT p.forecast_time) as matched_times
+            FROM `{self.project_id}.{self.dataset_id}.predictions` p
+            INNER JOIN `{self.project_id}.{self.dataset_id}.ground_truth` g
+                ON p.forecast_time = g.timestamp
+            WHERE p.forecast_time < CURRENT_TIMESTAMP()
+        )
+        SELECT
+            pt.total_forecast_times,
+            pt.earliest,
+            pt.latest,
+            gt.total_ground_truth,
+            m.matched_times
+        FROM prediction_times pt
+        CROSS JOIN ground_truth_times gt
+        CROSS JOIN matched m
+        """
+
+        query_job = self.client.query(query)
+        results = list(query_job.result())
+
+        if not results:
+            return {
+                "total_forecast_times": 0,
+                "total_ground_truth": 0,
+                "matched_times": 0,
+                "coverage_pct": 0.0,
+            }
+
+        row = results[0]
+        total = row["total_forecast_times"] or 0
+        matched = row["matched_times"] or 0
+
+        return {
+            "total_forecast_times": total,
+            "earliest_forecast": (
+                row["earliest"].isoformat() if row["earliest"] else None
+            ),
+            "latest_forecast": row["latest"].isoformat() if row["latest"] else None,
+            "total_ground_truth": row["total_ground_truth"] or 0,
+            "matched_times": matched,
+            "coverage_pct": (matched / total * 100) if total > 0 else 0.0,
+        }

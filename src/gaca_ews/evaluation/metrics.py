@@ -5,7 +5,7 @@ metrics by comparing model predictions against NOAA ground truth observations.
 """
 
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -72,8 +72,16 @@ def fetch_ground_truth_for_predictions(
         return pd.DataFrame(columns=["timestamp", "lat", "lon", "actual_temp"])
 
     # Determine time range
-    min_time = forecast_times.min()
-    max_time = forecast_times.max()
+    min_time_raw = forecast_times.min()
+    max_time_raw = forecast_times.max()
+
+    # Handle NaT values
+    if pd.isna(min_time_raw) or pd.isna(max_time_raw):
+        return pd.DataFrame(columns=["timestamp", "lat", "lon", "actual_temp"])
+
+    # Cast to Timestamp after NaT check for type safety
+    min_time = cast(pd.Timestamp, min_time_raw)
+    max_time = cast(pd.Timestamp, max_time_raw)
 
     # Fetch NOAA data for the time range
     # Calculate hours back from max_time to min_time
