@@ -107,7 +107,7 @@ jobs:
 
       - name: Build backend image (for testing)
         if: github.actor != 'dependabot[bot]' && !(github.ref == 'refs/heads/main' && github.event_name == 'push')
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./backend/Dockerfile
@@ -121,7 +121,7 @@ jobs:
 
       - name: Build and push backend image to GAR (direct push, no local load)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./backend/Dockerfile
@@ -233,7 +233,7 @@ jobs:
           driver-opts: network=host
 
       - name: Build frontend image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./app
           file: ./app/Dockerfile
@@ -467,7 +467,7 @@ jobs:
       # Build and push frontend
       - name: Build and push frontend image to GAR
         id: build-frontend
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./app
           file: ./app/Dockerfile
