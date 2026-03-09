@@ -355,6 +355,7 @@ class GroundTruthScheduler:
         self,
         storage: EvaluationStorage,
         lookback_hours: int = 72,
+        max_timestamps_per_run: int = 24,
     ) -> None:
         """Initialize the ground truth scheduler.
 
@@ -364,9 +365,14 @@ class GroundTruthScheduler:
             BigQuery storage client for storing ground truth
         lookback_hours : int
             How far back to look for missing ground truth (default: 72 hours)
+        max_timestamps_per_run : int
+            Maximum timestamps to process per run to stay within Cloud Run
+            request timeout limits (default: 24). Backlog is cleared over
+            multiple runs.
         """
         self.storage = storage
         self.lookback_hours = lookback_hours
+        self.max_timestamps_per_run = max_timestamps_per_run
         self.scheduler = AsyncIOScheduler(timezone="UTC")
         self.last_run_timestamp: datetime | None = None
         self.is_running = False
@@ -425,9 +431,18 @@ class GroundTruthScheduler:
                 logger.info("No missing ground truth - all forecast times covered")
                 return
 
-            logger.info(
-                f"Found {len(missing_timestamps)} timestamps needing ground truth"
-            )
+            total_missing = len(missing_timestamps)
+            if total_missing > self.max_timestamps_per_run:
+                logger.info(
+                    f"Found {total_missing} missing timestamps; "
+                    f"processing most recent {self.max_timestamps_per_run} "
+                    f"(remainder cleared in next runs)"
+                )
+                missing_timestamps = missing_timestamps[-self.max_timestamps_per_run :]
+            else:
+                logger.info(
+                    f"Found {total_missing} timestamps needing ground truth"
+                )
 
             # Fetch and store ground truth for each missing timestamp
             for ts in missing_timestamps:
