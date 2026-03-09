@@ -440,9 +440,7 @@ class GroundTruthScheduler:
                 )
                 missing_timestamps = missing_timestamps[-self.max_timestamps_per_run :]
             else:
-                logger.info(
-                    f"Found {total_missing} timestamps needing ground truth"
-                )
+                logger.info(f"Found {total_missing} timestamps needing ground truth")
 
             # Fetch and store ground truth for each missing timestamp
             for ts in missing_timestamps:
