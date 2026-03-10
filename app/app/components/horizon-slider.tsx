@@ -66,7 +66,7 @@ export function HorizonSlider({
           <button
             onClick={handlePlayPause}
             disabled={disabled}
-            className="flex-shrink-0 w-9 h-9 rounded-full bg-gradient-to-r from-[#EB088A] to-[#313CFF] hover:from-[#d00780] hover:to-[#2831e6] disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed text-white flex items-center justify-center transition-all shadow-lg hover:shadow-xl"
+            className="flex-shrink-0 w-9 h-9 rounded-full bg-[#E6007E] hover:bg-[#cc006e] disabled:bg-slate-700 disabled:cursor-not-allowed text-white flex items-center justify-center transition-all shadow-lg hover:shadow-xl"
             aria-label={isPlaying ? "Pause" : "Play"}
           >
             {isPlaying ? (
@@ -95,8 +95,8 @@ export function HorizonSlider({
                 className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer disabled:cursor-not-allowed slider-thumb"
                 style={{
                   background: `linear-gradient(to right,
-                    rgb(59, 130, 246) 0%,
-                    rgb(59, 130, 246) ${(currentIndex / (horizons.length - 1)) * 100}%,
+                    #E6007E 0%,
+                    #E6007E ${(currentIndex / (horizons.length - 1)) * 100}%,
                     rgb(51, 65, 85) ${(currentIndex / (horizons.length - 1)) * 100}%,
                     rgb(51, 65, 85) 100%)`,
                 }}
@@ -126,13 +126,13 @@ export function HorizonSlider({
                       <div className="absolute -inset-4" />
                       <div
                         className={`w-0.5 h-1.5 rounded-full transition-colors ${
-                          idx <= currentIndex ? "bg-blue-400" : "bg-slate-600"
-                        } group-hover:bg-blue-300`}
+                          idx <= currentIndex ? "bg-[#E6007E]" : "bg-slate-600"
+                        } group-hover:bg-[#ff3399]`}
                       />
                       <span
                         className={`text-[10px] font-medium mt-0.5 transition-colors whitespace-nowrap ${
-                          idx === currentIndex ? "text-blue-400" : "text-slate-500"
-                        } group-hover:text-blue-300`}
+                          idx === currentIndex ? "text-[#E6007E]" : "text-slate-500"
+                        } group-hover:text-[#ff3399]`}
                       >
                         {h}h
                       </span>

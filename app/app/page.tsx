@@ -27,7 +27,6 @@ import {
   ErrorOverlay,
   EmptyState,
   TemperatureChart,
-  TemperatureRange,
   ModelInfoPanel,
   LoadingSkeleton,
   EmptyStats,
@@ -128,7 +127,7 @@ export default function Home() {
                   onMouseLeave={() => setHoverInfo(null)}
                   onClick={handleClick}
                 >
-                  <NavigationControl position="top-right" />
+                  <NavigationControl position="top-right" showCompass={false} />
 
                   {/* Temperature Voronoi polygons */}
                   {voronoiGeoJSON.features.length > 0 && (
@@ -249,47 +248,43 @@ export default function Home() {
                   transition={{ duration: 0.3 }}
                   className="flex flex-col gap-4"
                 >
-                  <div className="grid grid-cols-2 gap-4">
-                    <StatCard
-                      label="Mean"
-                      value={displayStats.mean}
-                      unit="°C"
-                      color="#f59e0b"
-                      icon={TrendingUp}
-                    />
-                    <StatCard
-                      label="Min"
-                      value={displayStats.min}
-                      unit="°C"
-                      color="#3b82f6"
-                      icon={ChevronDown}
-                    />
-                    <StatCard
-                      label="Max"
-                      value={displayStats.max}
-                      unit="°C"
-                      color="#ef4444"
-                      icon={TrendingUp}
-                    />
-                    <StatCard
-                      label={selectedNode ? "Horizons" : "Nodes"}
-                      value={displayStats.count}
-                      unit=""
-                      color="#10b981"
-                      icon={MapPin}
-                    />
+                  <div>
+                    <p className="text-xs text-slate-400 mb-3">
+                      {!selectedNode
+                        ? `Statistics for ${selectedHorizon}h horizon across all nodes`
+                        : "Statistics for selected location across all horizons"}
+                    </p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <StatCard
+                        label="Mean"
+                        value={displayStats.mean}
+                        unit="°C"
+                        color="#f59e0b"
+                        icon={TrendingUp}
+                      />
+                      <StatCard
+                        label="Min"
+                        value={displayStats.min}
+                        unit="°C"
+                        color="#48C0D9"
+                        icon={ChevronDown}
+                      />
+                      <StatCard
+                        label="Max"
+                        value={displayStats.max}
+                        unit="°C"
+                        color="#ef4444"
+                        icon={TrendingUp}
+                      />
+                      <StatCard
+                        label={selectedNode ? "Horizons" : "Nodes"}
+                        value={displayStats.count}
+                        unit=""
+                        color="#10b981"
+                        icon={MapPin}
+                      />
+                    </div>
                   </div>
-
-                  {!selectedNode && (
-                    <p className="text-xs text-slate-400 mt-2 text-center">
-                      Statistics for {selectedHorizon}h horizon across all nodes
-                    </p>
-                  )}
-                  {selectedNode && (
-                    <p className="text-xs text-slate-400 mt-2 text-center">
-                      Statistics for selected location across all horizons
-                    </p>
-                  )}
 
                   {/* Time Series Chart */}
                   {timeSeriesData.length > 0 && (
@@ -299,14 +294,6 @@ export default function Home() {
                       onClearSelection={() => setSelectedNode(null)}
                     />
                   )}
-
-                  {/* Temperature Range */}
-                  <TemperatureRange
-                    stats={displayStats}
-                    selectedNode={selectedNode}
-                    selectedHorizon={selectedHorizon}
-                    colorRange={colorRange}
-                  />
 
                   {/* Model Info */}
                   {modelInfo && (

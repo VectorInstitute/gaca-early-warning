@@ -60,9 +60,9 @@ function SortableHeader({
         {label}
         {isActive ? (
           isAscending ? (
-            <ChevronUp className="w-4 h-4 text-blue-400" />
+            <ChevronUp className="w-4 h-4 text-[#E6007E]" />
           ) : (
-            <ChevronDown className="w-4 h-4 text-blue-400" />
+            <ChevronDown className="w-4 h-4 text-[#E6007E]" />
           )
         ) : (
           <ArrowUpDown className="w-4 h-4 opacity-0 group-hover:opacity-50 transition-opacity" />

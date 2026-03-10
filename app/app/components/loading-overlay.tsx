@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
  */
 export function LoadingOverlay() {
   return (
-    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+    <div className="fixed inset-0 ml-16 flex items-center justify-center pointer-events-none z-10">
       <div className="bg-slate-800/95 backdrop-blur-md rounded-2xl border border-slate-700/50 p-8 shadow-2xl pointer-events-auto">
         {/* Pyramid Stacking Animation */}
         <div className="relative w-24 h-24 mx-auto mb-6">
@@ -15,7 +15,7 @@ export function LoadingOverlay() {
             {[0, 1, 2].map((i) => (
               <motion.div
                 key={`bottom-${i}`}
-                className="w-6 h-6 bg-gradient-to-br from-[#EB088A] to-[#313CFF] rounded-sm"
+                className="w-6 h-6 bg-gradient-to-br from-[#E6007E] to-[#48C0D9] rounded-sm"
                 initial={{ y: -50, opacity: 0 }}
                 animate={{
                   y: 0,
@@ -36,7 +36,7 @@ export function LoadingOverlay() {
             {[0, 1].map((i) => (
               <motion.div
                 key={`middle-${i}`}
-                className="w-6 h-6 bg-gradient-to-br from-[#8A25C9] to-[#313CFF] rounded-sm"
+                className="w-6 h-6 bg-gradient-to-br from-[#8A25C9] to-[#48C0D9] rounded-sm"
                 initial={{ y: -50, opacity: 0 }}
                 animate={{
                   y: 0,
@@ -54,7 +54,7 @@ export function LoadingOverlay() {
 
           {/* Top layer - 1 block */}
           <motion.div
-            className="absolute bottom-14 left-1/2 -translate-x-1/2 w-6 h-6 bg-gradient-to-br from-[#EB088A] to-[#8A25C9] rounded-sm"
+            className="absolute bottom-14 left-1/2 -translate-x-1/2 w-6 h-6 bg-gradient-to-br from-[#E6007E] to-[#8A25C9] rounded-sm"
             initial={{ y: -50, opacity: 0 }}
             animate={{
               y: 0,
@@ -70,7 +70,7 @@ export function LoadingOverlay() {
 
           {/* Ping effect at the top */}
           <motion.div
-            className="absolute bottom-14 left-1/2 -translate-x-1/2 w-6 h-6 bg-[#EB088A] rounded-sm"
+            className="absolute bottom-14 left-1/2 -translate-x-1/2 w-6 h-6 bg-[#E6007E] rounded-sm"
             animate={{
               scale: [1, 2, 2],
               opacity: [0.5, 0, 0],
