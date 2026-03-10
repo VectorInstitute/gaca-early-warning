@@ -98,7 +98,7 @@ const MetricCard = ({
   value,
   subtitle,
   icon: Icon,
-  gradient = "from-[#EB088A] to-[#313CFF]",
+  gradient = "from-[#E6007E] to-[#48C0D9]",
 }: {
   title: string;
   value: string;
@@ -106,7 +106,7 @@ const MetricCard = ({
   icon: any;
   gradient?: string;
 }) => (
-  <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-6 hover:border-[#EB088A]/50 transition-all">
+  <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-6 hover:border-[#E6007E]/50 transition-all">
     <div className="flex items-center justify-between mb-3">
       <span className="text-sm font-medium text-slate-400">{title}</span>
       <div className={`p-2 rounded-lg bg-gradient-to-br ${gradient}`}>
@@ -128,7 +128,7 @@ const ErrorChart = ({ data, title }: { data: ChartDataPoint[]; title: string }) 
   const yMax = Math.ceil(maxValue * 1.15); // Add 15% padding above max value
 
   return (
-    <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-6 hover:border-[#313CFF]/50 transition-all">
+    <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-6 hover:border-[#48C0D9]/50 transition-all">
       <h3 className="text-lg font-semibold text-white mb-6">{title}</h3>
       <ResponsiveContainer width="100%" height={350}>
         <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 40 }}>
@@ -170,18 +170,18 @@ const ErrorChart = ({ data, title }: { data: ChartDataPoint[]; title: string }) 
           <Line
             type="monotone"
             dataKey="RMSE"
-            stroke="#EB088A"
+            stroke="#E6007E"
             strokeWidth={3}
-            dot={{ fill: "#EB088A", r: 5 }}
+            dot={{ fill: "#E6007E", r: 5 }}
             activeDot={{ r: 7 }}
             name="RMSE (°C)"
           />
           <Line
             type="monotone"
             dataKey="MAE"
-            stroke="#313CFF"
+            stroke="#48C0D9"
             strokeWidth={3}
-            dot={{ fill: "#313CFF", r: 5 }}
+            dot={{ fill: "#48C0D9", r: 5 }}
             activeDot={{ r: 7 }}
             name="MAE (°C)"
           />
@@ -301,7 +301,7 @@ export default function EvaluationPage() {
     if (loadingStatic) {
       return (
         <div className="space-y-6">
-          <div className="bg-[#EB088A]/10 border border-[#EB088A]/30 rounded-xl p-4">
+          <div className="bg-[#E6007E]/10 border border-[#E6007E]/30 rounded-xl p-4">
             <div className="h-4 w-64 bg-slate-700/50 rounded animate-pulse" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -331,7 +331,7 @@ export default function EvaluationPage() {
           transition={{ duration: 0.3 }}
           className="space-y-6"
         >
-          <div className="bg-[#EB088A]/10 border border-[#EB088A]/30 rounded-xl p-4">
+          <div className="bg-[#E6007E]/10 border border-[#E6007E]/30 rounded-xl p-4">
             <div className="flex flex-wrap gap-6 text-sm">
               <div>
                 <span className="text-slate-400">Period:</span>{" "}
@@ -355,14 +355,14 @@ export default function EvaluationPage() {
               value={`${staticEval.metrics.overall.rmse.toFixed(3)}°C`}
               subtitle="Root Mean Squared Error"
               icon={TrendingUp}
-              gradient="from-[#EB088A] to-pink-600"
+              gradient="from-[#E6007E] to-pink-600"
             />
             <MetricCard
               title="Overall MAE"
               value={`${staticEval.metrics.overall.mae.toFixed(3)}°C`}
               subtitle="Mean Absolute Error"
               icon={Activity}
-              gradient="from-[#313CFF] to-blue-600"
+              gradient="from-[#48C0D9] to-teal-500"
             />
           </div>
 
@@ -537,18 +537,18 @@ export default function EvaluationPage() {
             <Line
               type="monotone"
               dataKey="RMSE"
-              stroke="#EB088A"
+              stroke="#E6007E"
               strokeWidth={3}
-              dot={{ fill: "#EB088A", r: 6 }}
+              dot={{ fill: "#E6007E", r: 6 }}
               activeDot={{ r: 8 }}
               name="RMSE"
             />
             <Line
               type="monotone"
               dataKey="MAE"
-              stroke="#313CFF"
+              stroke="#48C0D9"
               strokeWidth={3}
-              dot={{ fill: "#313CFF", r: 6 }}
+              dot={{ fill: "#48C0D9", r: 6 }}
               activeDot={{ r: 8 }}
               name="MAE"
             />
@@ -567,7 +567,7 @@ export default function EvaluationPage() {
     if (loadingDynamic) {
       return (
         <div className="space-y-6">
-          <div className="bg-[#313CFF]/10 border border-[#313CFF]/30 rounded-xl p-4">
+          <div className="bg-[#48C0D9]/10 border border-[#48C0D9]/30 rounded-xl p-4">
             <div className="h-4 w-64 bg-slate-700/50 rounded animate-pulse" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -597,7 +597,7 @@ export default function EvaluationPage() {
           transition={{ duration: 0.3 }}
           className="space-y-6"
         >
-          <div className="bg-[#313CFF]/10 border border-[#313CFF]/30 rounded-xl p-4">
+          <div className="bg-[#48C0D9]/10 border border-[#48C0D9]/30 rounded-xl p-4">
             <div className="flex flex-wrap gap-6 text-sm">
               <div>
                 <span className="text-slate-400">Window:</span>{" "}
@@ -620,14 +620,14 @@ export default function EvaluationPage() {
               value={`${dynamicEval.metrics.overall.rmse.toFixed(3)}°C`}
               subtitle="Root Mean Squared Error"
               icon={TrendingUp}
-              gradient="from-[#EB088A] to-pink-600"
+              gradient="from-[#E6007E] to-pink-600"
             />
             <MetricCard
               title="Overall MAE"
               value={`${dynamicEval.metrics.overall.mae.toFixed(3)}°C`}
               subtitle="Mean Absolute Error"
               icon={Activity}
-              gradient="from-[#313CFF] to-blue-600"
+              gradient="from-[#48C0D9] to-teal-500"
             />
           </div>
 
@@ -656,7 +656,7 @@ export default function EvaluationPage() {
             className="mb-8"
           >
             <div className="flex items-center gap-4 mb-2">
-              <div className="p-3 rounded-xl bg-gradient-to-br from-[#EB088A] to-[#313CFF]">
+              <div className="p-3 rounded-xl bg-gradient-to-br from-[#E6007E] to-[#48C0D9]">
                 <Activity className="w-8 h-8 text-white" />
               </div>
               <div>
@@ -671,7 +671,7 @@ export default function EvaluationPage() {
           {/* Static Validation Section */}
           <section className="mb-12">
             <div className="flex items-center gap-3 mb-6">
-              <Calendar className="w-6 h-6 text-[#EB088A]" />
+              <Calendar className="w-6 h-6 text-[#E6007E]" />
               <h2 className="text-2xl font-bold text-white">
                 Static Validation Period
               </h2>
@@ -682,7 +682,7 @@ export default function EvaluationPage() {
           {/* Dynamic Evaluation Section */}
           <section>
             <div className="flex items-center gap-3 mb-6">
-              <Activity className="w-6 h-6 text-[#313CFF]" />
+              <Activity className="w-6 h-6 text-[#48C0D9]" />
               <h2 className="text-2xl font-bold text-white">
                 Dynamic Evaluation (Rolling 30-Day Window)
               </h2>

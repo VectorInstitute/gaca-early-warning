@@ -254,7 +254,7 @@ export default function LogsPage() {
                               onClick={() => setStatusFilter(status)}
                               className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
                                 statusFilter === status
-                                  ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                                  ? "bg-[#E6007E]/20 text-[#E6007E] border border-[#E6007E]/30"
                                   : "bg-slate-700/30 text-slate-400 border border-slate-600/30 hover:bg-slate-700/50"
                               }`}
                             >

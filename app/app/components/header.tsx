@@ -24,12 +24,12 @@ export function Header() {
               className="hover:opacity-90 transition-opacity"
             />
           </div>
-          <div className="h-8 w-1 bg-gradient-to-b from-[#EB088A] to-[#313CFF] rounded-full"></div>
+          <div className="h-8 w-1 bg-gradient-to-b from-[#E6007E] to-[#48C0D9] rounded-full"></div>
           <div>
             <h1 className="text-lg font-bold text-white leading-tight">
               Global AI Alliance for Climate Action
             </h1>
-            <h2 className="text-sm font-semibold text-[#EB088A] mt-0.5">
+            <h2 className="text-sm font-semibold text-[#E6007E] mt-0.5">
               High-Resolution Forecasting
             </h2>
           </div>

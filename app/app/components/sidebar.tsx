@@ -18,13 +18,13 @@ export function CollapsedSidebar() {
       icon: Home,
       label: "Forecast",
       path: "/",
-      gradient: "from-[#EB088A] to-pink-600",
+      gradient: "from-[#E6007E] to-pink-600",
     },
     {
       icon: BarChart3,
       label: "Evaluation",
       path: "/evaluation",
-      gradient: "from-[#313CFF] to-blue-600",
+      gradient: "from-[#48C0D9] to-teal-500",
     },
     {
       icon: ScrollText,
@@ -79,7 +79,7 @@ export function CollapsedSidebar() {
                   layoutId="activeTab"
                   className="absolute inset-0 rounded-xl"
                   style={{
-                    background: `linear-gradient(135deg, rgba(235, 8, 138, 0.1), rgba(49, 60, 255, 0.1))`,
+                    background: `rgba(230, 0, 126, 0.12)`,
                   }}
                   transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                 />

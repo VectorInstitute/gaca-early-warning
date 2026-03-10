@@ -39,7 +39,7 @@ export function ForecastInfo({ forecastTime, selectedHorizon }: ForecastInfoProp
         </span>
         <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
           <span>Data: {formattedBaseTime}</span>
-          <span className="text-blue-400 font-medium">(+{selectedHorizon}h)</span>
+          <span className="text-[#E6007E] font-medium">(+{selectedHorizon}h)</span>
         </div>
       </div>
     </div>
