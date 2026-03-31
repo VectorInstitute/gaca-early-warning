@@ -19,6 +19,9 @@ dependencies = [
     "matplotlib",
     "fonttools>=4.60.2", # Pinning version to address vulnerability GHSA-768j-98cg-p3fv
     "urllib3>=2.6.3", # Pinning version to address vulnerabilities GHSA-gm62-xv2j-4w53 and GHSA-2xpw-w6gg-jr37
+    "cryptography>=46.0.6", # Pinning version to address vulnerability GHSA-m959-cc7f-wv43
+    "requests>=2.33.0", # Pinning version to address vulnerability GHSA-gc5v-m9x4-r6x2
+    "pygments>=2.20.0", # Pinning version to address vulnerability GHSA-5239-wwwm-4pmq
     "networkx",
     "geopy",
     "scikit-learn==1.7.1",
