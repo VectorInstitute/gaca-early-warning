@@ -43,6 +43,7 @@ dependencies = [
     "pyasn1>=0.6.2",
     "virtualenv>=20.36.1",
     "cryptography>=46.0.6", # Pinning version to address vulnerability GHSA-m959-cc7f-wv43
+    "pygments>=2.20.0", # Pinning version to address vulnerability GHSA-5239-wwwm-4pmq
 ]
 
 [project.scripts]
