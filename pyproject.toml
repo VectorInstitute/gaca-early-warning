@@ -17,6 +17,7 @@ dependencies = [
     "polars>=1.35.0", # High-performance DataFrame library for data operations
     "pyarrow>=18.1.0", # Required for Parquet support
     "matplotlib",
+    "pillow>=12.2.0", # Pinning version to address vulnerability CVE-2026-40192
     "fonttools>=4.60.2", # Pinning version to address vulnerability GHSA-768j-98cg-p3fv
     "urllib3>=2.6.3", # Pinning version to address vulnerabilities GHSA-gm62-xv2j-4w53 and GHSA-2xpw-w6gg-jr37
     "cryptography>=46.0.6", # Pinning version to address vulnerability GHSA-m959-cc7f-wv43
@@ -66,7 +67,7 @@ dev = [
     "pip>=25.2", # Pinning version to address vulnerability GHSA-4xh5-x5gv-qwph
     "pip-audit>=2.7.3",
     "pre-commit>=4.1.0",
-    "pytest>=9.0.3",
+    "pytest>=9.0.3", # Pinning version to address vulnerability CVE-2025-71176
     "pytest-asyncio>=0.25.2",
     "pytest-cov>=6.0.0",
     "pytest-mock>=3.14.0",
