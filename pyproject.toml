@@ -46,6 +46,7 @@ dependencies = [
     "pyasn1>=0.6.2",
     "virtualenv>=20.36.1",
     "pygments>=2.20.0", # Pinning version to address vulnerability GHSA-5239-wwwm-4pmq
+    "idna>=3.15", # Pinning version to address vulnerability CVE-2026-45409
 ]
 
 [project.scripts]
