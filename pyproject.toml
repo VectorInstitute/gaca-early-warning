@@ -28,6 +28,7 @@ dependencies = [
     "torch",
     "torch-geometric",
     "joblib",
+    "starlette>=1.0.1", # Pinning version to address vulnerability PYSEC-2026-161
     "fastapi>=0.115.6",
     "uvicorn[standard]>=0.34.0",
     "pydantic>=2.10.5",
