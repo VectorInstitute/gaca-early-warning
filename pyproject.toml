@@ -20,7 +20,7 @@ dependencies = [
     "pillow>=12.2.0", # Pinning version to address vulnerability CVE-2026-40192
     "fonttools>=4.60.2", # Pinning version to address vulnerability GHSA-768j-98cg-p3fv
     "urllib3>=2.7.0", # Pinning version to address vulnerabilities GHSA-gm62-xv2j-4w53 and GHSA-2xpw-w6gg-jr37
-    "cryptography>=46.0.6", # Pinning version to address vulnerability GHSA-m959-cc7f-wv43
+    "cryptography>=48.0.1", # Pinning version to address vulnerabilities GHSA-m959-cc7f-wv43 and GHSA-537c-gmf6-5ccf
     "requests>=2.33.0", # Pinning version to address vulnerability GHSA-gc5v-m9x4-r6x2
     "networkx",
     "geopy",
@@ -41,7 +41,8 @@ dependencies = [
     "google-cloud-bigquery-storage>=2.26.0",
     "db-dtypes>=1.4.4",
     "pandas-gbq>=0.31.0",
-    "aiohttp>=3.14.0",
+    "aiohttp>=3.14.1", # Pinning version to address vulnerabilities CVE-2026-54273 through CVE-2026-54280
+    "tornado>=6.5.7", # Pinning version to address vulnerabilities CVE-2026-49853, CVE-2026-49854, CVE-2026-49855 and GHSA-pw6j-qg29-8w7f
     "authlib>=1.6.12",
     "filelock>=3.20.3",
     "pyasn1>=0.6.2",
