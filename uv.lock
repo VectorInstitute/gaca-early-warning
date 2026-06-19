@@ -1141,6 +1141,7 @@ docs = [
     { name = "mkdocstrings" },
     { name = "mkdocstrings-python" },
     { name = "pymdown-extensions" },
+    { name = "tornado" },
 ]
 
 [package.metadata]
@@ -1213,6 +1214,7 @@ docs = [
     { name = "mkdocstrings", specifier = ">=0.24.1" },
     { name = "mkdocstrings-python", specifier = ">=1.10.0" },
     { name = "pymdown-extensions", specifier = ">=10.21.3" },
+    { name = "tornado", specifier = ">=6.5.7" },
 ]
 
 [[package]]
