@@ -20,7 +20,7 @@ dependencies = [
     "pillow>=12.2.0", # Pinning version to address vulnerability CVE-2026-40192
     "fonttools>=4.60.2", # Pinning version to address vulnerability GHSA-768j-98cg-p3fv
     "urllib3>=2.7.0", # Pinning version to address vulnerabilities GHSA-gm62-xv2j-4w53 and GHSA-2xpw-w6gg-jr37
-    "cryptography>=48.0.1", # Pinning version to address vulnerabilities GHSA-m959-cc7f-wv43 and GHSA-537c-gmf6-5ccf
+    "cryptography>=48.0.1", # Pinning version to address vulnerabilities GHSA-m959-cc7f-wv43, GHSA-537c-gmf6-5ccf
     "requests>=2.33.0", # Pinning version to address vulnerability GHSA-gc5v-m9x4-r6x2
     "networkx",
     "geopy",
