@@ -1121,6 +1121,7 @@ dependencies = [
 dev = [
     { name = "codecov" },
     { name = "filelock" },
+    { name = "msgpack" },
     { name = "mypy" },
     { name = "nbqa" },
     { name = "pip" },
@@ -1194,6 +1195,7 @@ requires-dist = [
 dev = [
     { name = "codecov", specifier = ">=2.1.13" },
     { name = "filelock", specifier = ">=3.20.1" },
+    { name = "msgpack", specifier = ">=1.2.1" },
     { name = "mypy", specifier = ">=1.14.1" },
     { name = "nbqa", specifier = ">=1.9.1" },
     { name = "pip", specifier = ">=26.1.2" },
