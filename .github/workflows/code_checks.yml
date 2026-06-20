@@ -70,3 +70,4 @@ jobs:
           ignore-vulns: |
             GHSA-4xh5-x5gv-qwph
             GHSA-7gcm-g887-7qv7
+          internal-be-careful-extra-flags: --skip-editable
