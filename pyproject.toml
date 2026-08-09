@@ -84,7 +84,7 @@ docs = [
     "mkdocs-material>=9.5.15",
     "mkdocstrings>=0.24.1",
     "mkdocstrings-python>=1.10.0",
-    "pymdown-extensions>=10.21.3", # Pinning version to fix compatibility with pygments>=2.20.0 (filename=None handling)
+    "pymdown-extensions>=11.0.1", # Pinning version to fix compatibility with pygments>=2.20.0 (filename=None handling)
     "ipykernel>=6.29.5",
     "tornado>=6.5.7", # Pinning version to address vulnerabilities CVE-2026-49853, CVE-2026-49854, CVE-2026-49855, GHSA-pw6j-qg29-8w7f
     "ipython>=8.31.0",
