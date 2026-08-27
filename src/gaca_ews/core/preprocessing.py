@@ -248,8 +248,9 @@ def build_feature_sequences(
         ):
             raise ValueError(f"[{ts!r}] lat/lon mismatch!")
 
-        # extract features
-        raw_feats = hourly_df[feats].to_numpy(np.float32)
+        # extract features (copy=True: pandas 3's copy-on-write can hand back
+        # a read-only array, breaking the in-place Celsius conversion below)
+        raw_feats = hourly_df[feats].to_numpy(np.float32, copy=True)
 
         # celsius conversion if needed
         if celsius:
