@@ -1,13 +1,11 @@
 name: Build and Deploy to GCP
 
 on:
-  # Deployment disabled - services brought down 2026-06-07
-  workflow_dispatch:
-    inputs:
-      enable:
-        description: "Set to 'true' to re-enable deployment"
-        required: true
-        default: "false"
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # Allow manual triggers
 
 # Prevent concurrent deployments
 concurrency:
