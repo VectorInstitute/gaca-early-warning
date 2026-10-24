@@ -1,6 +1,6 @@
 # Multi-stage build for GACA EWS Dashboard (Next.js)
 # Stage 1: Dependencies
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 
 # Install dependencies for native modules
 RUN apk add --no-cache libc6-compat
@@ -14,7 +14,7 @@ COPY package*.json ./
 RUN npm ci && npm cache clean --force
 
 # Stage 2: Builder
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -36,7 +36,7 @@ ENV NEXT_PUBLIC_MAPBOX_TOKEN=$NEXT_PUBLIC_MAPBOX_TOKEN
 RUN npm run build
 
 # Stage 3: Runner
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 
 WORKDIR /app
 
