@@ -62,7 +62,7 @@ jobs:
 
       # Authenticate early for main branch builds
       - name: Authenticate to Google Cloud (early for direct push)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         id: auth-early
         uses: google-github-actions/auth@v3
         with:
@@ -71,16 +71,16 @@ jobs:
           token_format: access_token
 
       - name: Set up Cloud SDK (early for direct push)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: google-github-actions/setup-gcloud@v3
 
       - name: Configure Docker for Artifact Registry (early)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
           gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
 
       - name: Create Artifact Registry repository (early)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
           if ! gcloud artifacts repositories describe ${{ env.REPOSITORY }} \
             --location=${{ env.GAR_LOCATION }} \
@@ -106,7 +106,7 @@ jobs:
           buildkitd-flags: --debug
 
       - name: Build backend image (for testing)
-        if: github.actor != 'dependabot[bot]' && !(github.ref == 'refs/heads/main' && github.event_name == 'push')
+        if: github.actor != 'dependabot[bot]' && !(github.ref == 'refs/heads/main' && github.event_name != 'pull_request')
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -120,7 +120,7 @@ jobs:
           sbom: false  # Disable SBOM to reduce output size
 
       - name: Build and push backend image to GAR (direct push, no local load)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -145,7 +145,7 @@ jobs:
 
       # Backend Tests (skip on main push since tests already ran in PR)
       - name: Test backend container
-        if: github.actor != 'dependabot[bot]' && !(github.ref == 'refs/heads/main' && github.event_name == 'push')
+        if: github.actor != 'dependabot[bot]' && !(github.ref == 'refs/heads/main' && github.event_name != 'pull_request')
         run: |
           set -e
 
@@ -248,7 +248,7 @@ jobs:
 
       # Frontend Tests (skip on main push since tests already ran in PR)
       - name: Test frontend container
-        if: github.actor != 'dependabot[bot]' && !(github.ref == 'refs/heads/main' && github.event_name == 'push')
+        if: github.actor != 'dependabot[bot]' && !(github.ref == 'refs/heads/main' && github.event_name != 'pull_request')
         run: |
           set -e
 
@@ -306,7 +306,7 @@ jobs:
   # Frontend is still rebuilt here because it needs the backend URL as a build arg
   deploy:
     name: Deploy to Cloud Run
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: [build-backend, build-frontend]
     runs-on: ubuntu-latest
     permissions:
